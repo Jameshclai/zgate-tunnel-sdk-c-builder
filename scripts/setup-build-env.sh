@@ -13,24 +13,45 @@ fi
 
 [[ "${SKIP_ENV_CHECK:-0}" = "1" ]] && { echo "==> Skipping build env check (SKIP_ENV_CHECK=1)"; exit 0; }
 
-echo "==> Checking build environment..."
-REQUIRED=(git curl cmake ninja gcc g++ pkg-config zip)
+echo "==> Step 1a: Checking build environment (basic tools + cross-compilation)..."
+REQUIRED=(git curl cmake ninja gcc g++ pkg-config zip unzip tar)
 MISSING=()
 for cmd in "${REQUIRED[@]}"; do
     command -v "$cmd" &>/dev/null || MISSING+=("$cmd")
 done
 
-if [[ ${#MISSING[@]} -gt 0 ]]; then
-    echo "    Missing required: ${MISSING[*]}"
-    echo ""
-    read -r -p "Install missing packages now? [y/N] " ans
-    if [[ "${ans,,}" = "y" || "${ans,,}" = "yes" ]]; then
-        sudo -v || { echo "Error: sudo access failed." >&2; exit 1; }
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake ninja-build git curl pkg-config zip
-        echo "    Packages installed."
+# 若有需 sudo 的套件，在建置編譯環境階段先取得 sudo，一次安裝所有套件，之後才進入 patch/編譯
+SUDO_OK=0
+NEED_SUDO=
+[[ ${#MISSING[@]} -gt 0 ]] && NEED_SUDO=1
+[[ "${SKIP_CROSS_TOOLCHAINS:-0}" != "1" ]] && NEED_SUDO=1
+if [[ -n "${NEED_SUDO}" ]]; then
+    echo "    即將安裝建置與交叉編譯所需套件，可能需要 sudo 權限。"
+    read -r -p "    是否繼續並輸入 sudo 密碼（若需要）? [Y/n] " ans
+    if [[ "${ans,,}" != "n" && "${ans,,}" != "no" ]]; then
+        if sudo -v 2>/dev/null; then
+            SUDO_OK=1
+            echo "    sudo 已就緒，接著安裝所需套件。"
+        else
+            echo "Error: sudo 權限取得失敗，無法安裝套件。" >&2
+            exit 1
+        fi
     else
-        echo "Please install the missing packages and re-run." >&2
+        echo "    已略過 sudo；將略過需 sudo 的交叉編譯工具鏈安裝。" >&2
+        export SKIP_CROSS_TOOLCHAINS=1
+    fi
+fi
+
+if [[ ${#MISSING[@]} -gt 0 ]]; then
+    if [[ "${SUDO_OK}" = "1" ]]; then
+        echo "    Missing required: ${MISSING[*]}"
+        echo "    正在安裝基本建置套件..."
+        sudo apt-get update -qq
+        sudo apt-get install -y build-essential cmake ninja-build git curl pkg-config zip unzip tar
+        echo "    基本套件已安裝。"
+    else
+        echo "    Missing required: ${MISSING[*]}"
+        echo "Please install the missing packages and re-run, or answer Y to use sudo." >&2
         exit 1
     fi
 fi

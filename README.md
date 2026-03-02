@@ -18,7 +18,7 @@
 ./build.sh
 ```
 
-會依序：檢查環境 → 取得最新 ziti-tunnel-sdk-c → 使用 zgate-sdk-c-builder 產出的 zgate-sdk-c（見上方需求）→ patch → 多平台編譯 → 清理。
+會依序：**建置編譯環境**（若需安裝套件會先詢問 sudo，一次安裝基本工具與交叉編譯工具鏈）→ 取得最新 ziti-tunnel-sdk-c → 使用 zgate-sdk-c-builder 產出的 zgate-sdk-c → patch → 多平台編譯 → 清理。
 
 ### 設定
 
@@ -31,8 +31,40 @@
 | `OUTPUT_DIR` | 產出目錄的父目錄 | `./output` |
 | `ZGATE_SDK_BUILDER_OUTPUT` | zgate-sdk-c 來源（zgate-sdk-c-builder 的 output） | `/home/user/zgate-sdk-c-builder/output` |
 | `ZITI_TUNNEL_SDK_TAG` | 固定 tunnel 版本（如 v1.10.10） | 不設則用最新 release |
-| `TUNNEL_PRESETS` | 要編譯的 CMake presets（分號分隔） | `ci-linux-x64;ci-linux-arm64;ci-linux-arm;ci-linux-mipsel`（所有 Linux 平台） |
+| `TUNNEL_PRESETS` | 要編譯的 CMake presets（分號分隔） | 7 平台（Darwin/Linux/Windows）；Windows x86_64 使用 MinGW 以支援 Linux 主機交叉編譯 |
+| `SKIP_CROSS_TOOLCHAINS` | 設為 1 略過 Darwin/Windows 工具鏈安裝 | 不設則會自動安裝 MinGW、osxcross 等 |
 | `SKIP_ENV_CHECK` | 設為 1 略過環境檢查 | 不設則執行檢查 |
+
+## Git 版控與釋出
+
+本專案使用 Git 版控，建議分支策略與釋出流程如下。
+
+### 日常開發
+
+- 主分支：`master`
+- 修改後提交：`git add .` → `git commit -m "說明"` → `git push origin master`
+
+### 釋出版本（Release）
+
+1. 確認所有變更已提交、建置通過。
+2. 打標籤（與釋出版本號一致，例如 1.0.2）：
+   ```bash
+   git tag -a v1.0.2 -m "Release 1.0.2"
+   ```
+3. 推送到 GitHub（含標籤）：
+   ```bash
+   git push origin master
+   git push origin v1.0.2
+   ```
+   若使用 Personal Access Token 驗證，請勿將 token 寫入任何檔案或提交；可於推送時依提示輸入，或使用 Git 憑證儲存。
+4. 在 GitHub 專案頁面 **Releases** 中可依標籤建立 Release 並撰寫釋出說明。
+
+### 忽略的檔案（見 .gitignore）
+
+- `work/`、`output/`、`build*/`：建置與產出目錄
+- `.build-env.vcpkg`、`.build-env.cross`：執行期產生的環境變數檔
+- `.cross-toolchains/`：交叉編譯工具鏈安裝目錄
+- `config.env`：本機設定（請勿提交含密碼或 token 的設定）
 
 ## 目錄結構
 
@@ -46,6 +78,7 @@ zgate-tunnel-sdk-c-builder/
 ├── build.sh
 ├── scripts/
 │   ├── setup-build-env.sh
+│   ├── setup-cross-toolchains.sh
 │   ├── fetch-latest.sh
 │   ├── ensure-zgate-sdk.sh
 │   ├── apply-patch.sh

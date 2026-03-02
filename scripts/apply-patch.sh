@@ -150,25 +150,100 @@ for f in "${OUT}/lib/tests/CMakeLists.txt" "${OUT}/tests/CMakeLists.txt"; do
     [[ -f "$f" ]] && sed -i 's/ziti-tunnel/zgate-tunnel/g' "$f" && sed -i 's/ziti_edge/zgate_edge/g' "$f"
 done
 
-# ---- CMakePresets.json: unique binaryDir per preset for multi-platform builds ----
+# ---- Darwin 交叉編譯 (osxcross)：Linux 主機建置 macOS 時使用 ----
+OSXCROSS_ARM64_CMAKE="${OUT}/toolchains/macOS-arm64-osxcross.cmake"
+OSXCROSS_X64_CMAKE="${OUT}/toolchains/macOS-x64-osxcross.cmake"
+cat > "${OSXCROSS_ARM64_CMAKE}" << 'OSXARM64'
+# Linux host: use osxcross for Darwin arm64 (set OSXCROSS_ROOT)
+set(CMAKE_SYSTEM_NAME Darwin)
+set(CMAKE_SYSTEM_PROCESSOR arm64)
+set(ZGATE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+if(DEFINED ENV{OSXCROSS_ROOT})
+  set(OSXCROSS_BIN "$ENV{OSXCROSS_ROOT}/target/bin")
+  if(EXISTS "${OSXCROSS_BIN}/arm64-apple-darwin20.4-clang")
+    set(CMAKE_C_COMPILER "${OSXCROSS_BIN}/arm64-apple-darwin20.4-clang")
+    set(CMAKE_CXX_COMPILER "${OSXCROSS_BIN}/arm64-apple-darwin20.4-clang++")
+  elseif(EXISTS "${OSXCROSS_BIN}/o64-clang")
+    set(CMAKE_C_COMPILER "${OSXCROSS_BIN}/o64-clang")
+    set(CMAKE_CXX_COMPILER "${OSXCROSS_BIN}/o64-clang++")
+  endif()
+endif()
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+OSXARM64
+cat > "${OSXCROSS_X64_CMAKE}" << 'OSXX64'
+# Linux host: use osxcross for Darwin x86_64
+set(CMAKE_SYSTEM_NAME Darwin)
+set(CMAKE_SYSTEM_PROCESSOR x86_64)
+set(ZGATE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+if(DEFINED ENV{OSXCROSS_ROOT})
+  set(OSXCROSS_BIN "$ENV{OSXCROSS_ROOT}/target/bin")
+  if(EXISTS "${OSXCROSS_BIN}/x86_64-apple-darwin20.4-clang")
+    set(CMAKE_C_COMPILER "${OSXCROSS_BIN}/x86_64-apple-darwin20.4-clang")
+    set(CMAKE_CXX_COMPILER "${OSXCROSS_BIN}/x86_64-apple-darwin20.4-clang++")
+  elseif(EXISTS "${OSXCROSS_BIN}/o64-clang")
+    set(CMAKE_C_COMPILER "${OSXCROSS_BIN}/o64-clang")
+    set(CMAKE_CXX_COMPILER "${OSXCROSS_BIN}/o64-clang++")
+  endif()
+endif()
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+OSXX64
+
+# ---- Windows arm64 MinGW：Linux 主機交叉編譯用 ----
+cat > "${OUT}/toolchains/Windows-arm64-mingw.cmake" << 'WINARM64'
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_PROCESSOR ARM64)
+set(CMAKE_C_COMPILER aarch64-w64-mingw32-gcc)
+set(CMAKE_CXX_COMPILER aarch64-w64-mingw32-g++)
+WINARM64
+
+# ---- CMakePresets.json: unique binaryDir + Windows arm64 MinGW preset ----
 PRESETS_JSON="${OUT}/CMakePresets.json"
 if [[ -f "${PRESETS_JSON}" ]]; then
     python3 -c "
 import json
 with open(\"${PRESETS_JSON}\", \"r\") as f:
     data = json.load(f)
-for p in data.get(\"configurePresets\", []):
+presets = data.get(\"configurePresets\", [])
+for p in presets:
     name = p.get(\"name\", \"\")
     if not name or p.get(\"hidden\"):
         continue
     inherits = p.get(\"inherits\", [])
     if isinstance(inherits, str):
         inherits = [inherits]
-    # 為可選用的 ci- preset 設定獨立 binaryDir（ci-linux-arm64 等 inherits 為字串時也要有）
     if name.startswith(\"ci-\") and (\"ci-build\" in inherits or any(s and s.startswith(\"ci-\") for s in inherits)):
         p[\"binaryDir\"] = \"\${sourceDir}/build-\" + name
     elif \"ci-build\" in inherits:
         p[\"binaryDir\"] = \"\${sourceDir}/build-\" + name
+# Add Windows arm64 MinGW preset (for Linux host cross-compile)
+if not any(p.get(\"name\") == \"vcpkg-arm64-mingw-static\" for p in presets):
+    presets.append({
+        \"name\": \"vcpkg-arm64-mingw-static\",
+        \"hidden\": True,
+        \"cacheVariables\": {\"VCPKG_TARGET_TRIPLET\": \"arm64-mingw-static\"}
+    })
+if not any(p.get(\"name\") == \"ci-win-arm64-mingw\" for p in presets):
+    presets.append({
+        \"name\": \"ci-win-arm64-mingw\",
+        \"inherits\": [\"flags-windows-mingw\", \"ci-std\", \"ninja\"],
+        \"architecture\": {\"value\": \"arm64\", \"strategy\": \"external\"},
+        \"hidden\": True
+    })
+if not any(p.get(\"name\") == \"ci-windows-arm64-mingw\" for p in presets):
+    presets.append({
+        \"name\": \"ci-windows-arm64-mingw\",
+        \"inherits\": [\"ci-build\", \"ci-win-arm64-mingw\", \"dev-mode\", \"vcpkg\", \"vcpkg-arm64-mingw-static\"],
+        \"cacheVariables\": {
+            \"VCPKG_CHAINLOAD_TOOLCHAIN_FILE\": \"\${sourceDir}/toolchains/Windows-arm64-mingw.cmake\"
+        },
+        \"binaryDir\": \"\${sourceDir}/build-ci-windows-arm64-mingw\"
+    })
 with open(\"${PRESETS_JSON}\", \"w\") as f:
     json.dump(data, f, indent=2)
 "

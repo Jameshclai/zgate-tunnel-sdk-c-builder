@@ -24,8 +24,8 @@ if [[ ! -d "${ZGATE_TUNNEL_OUT}" ]]; then
     exit 1
 fi
 
-# Presets to build (default: 所有 Linux 平台 x64/arm64/arm/mipsel；可透過 TUNNEL_PRESETS 覆寫)
-DEFAULT_PRESETS="ci-linux-x64;ci-linux-arm64;ci-linux-arm;ci-linux-mipsel"
+# Presets to build (default: 7 平台；Windows 用 MinGW 以支援 Linux 主機交叉編譯)
+DEFAULT_PRESETS="ci-linux-x64;ci-linux-arm64;ci-linux-arm;ci-macOS-x64;ci-macOS-arm64;ci-windows-x64-mingw;ci-windows-arm64-mingw"
 PRESETS="${TUNNEL_PRESETS:-$DEFAULT_PRESETS}"
 # Pass ZGATE_SDK_DIR so deps can find zgate-sdk-c
 export ZGATE_SDK_DIR="${ZGATE_SDK_DIR:-}"
@@ -43,34 +43,26 @@ fi
 
 cd "${ZGATE_TUNNEL_OUT}"
 IFS=';' read -ra PRESET_ARRAY <<< "$PRESETS"
-FAILED=""
 for preset in "${PRESET_ARRAY[@]}"; do
     preset="${preset// /}"
     [[ -z "$preset" ]] && continue
     echo "==> Configuring and building preset: ${preset}"
-    if ! cmake --preset "${preset}" -DZGATE_SDK_DIR="${ZGATE_SDK_DIR}" -DDISABLE_LIBSYSTEMD_FEATURE=ON; then
-        echo "==> Skipping build (configure failed): ${preset}" >&2
-        FAILED="${FAILED} ${preset}"
-        continue
+    EXTRA_CMAKE=()
+    if [[ "${preset}" == ci-macOS-arm64 ]] && [[ -n "${OSXCROSS_ROOT:-}" ]] && [[ -f "${ZGATE_TUNNEL_OUT}/toolchains/macOS-arm64-osxcross.cmake" ]]; then
+        EXTRA_CMAKE=(-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="${ZGATE_TUNNEL_OUT}/toolchains/macOS-arm64-osxcross.cmake")
+    elif [[ "${preset}" == ci-macOS-x64 ]] && [[ -n "${OSXCROSS_ROOT:-}" ]] && [[ -f "${ZGATE_TUNNEL_OUT}/toolchains/macOS-x64-osxcross.cmake" ]]; then
+        EXTRA_CMAKE=(-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="${ZGATE_TUNNEL_OUT}/toolchains/macOS-x64-osxcross.cmake")
     fi
+    cmake --preset "${preset}" -DZGATE_SDK_DIR="${ZGATE_SDK_DIR}" -DDISABLE_LIBSYSTEMD_FEATURE=ON "${EXTRA_CMAKE[@]}"
     BINARY_DIR="build-${preset}"
     if [[ ! -d "${BINARY_DIR}" ]]; then
         BINARY_DIR="build"
     fi
     if [[ ! -d "${BINARY_DIR}" ]]; then
-        echo "==> Skipping build (binaryDir missing): ${preset}" >&2
-        FAILED="${FAILED} ${preset}"
-        continue
+        echo "Error: binaryDir not found for preset ${preset}" >&2
+        exit 1
     fi
-    if ! cmake --build "${BINARY_DIR}" --config Release; then
-        echo "==> Build failed: ${preset}" >&2
-        FAILED="${FAILED} ${preset}"
-        continue
-    fi
+    cmake --build "${BINARY_DIR}" --config Release
     echo "==> Done: ${preset} -> ${BINARY_DIR}"
 done
-if [[ -n "${FAILED}" ]]; then
-    echo "==> Some presets failed:${FAILED}" >&2
-    exit 1
-fi
 echo "==> All platform builds complete."

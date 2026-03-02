@@ -2,9 +2,11 @@
 work/
 output/
 build*/
+.cross-toolchains/
 *.log
 .env
 .build-env.vcpkg
+.build-env.cross
 
 # Output: generated zgate-tunnel-sdk-c versions
 zgate-tunnel-sdk-c-*/
