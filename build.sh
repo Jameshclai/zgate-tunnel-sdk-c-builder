@@ -96,6 +96,22 @@ else
     echo "  （產出目錄不存在，請檢查建置流程。）"
     echo ""
 fi
+# 可選：建置完成後自動推送到 GitHub（config.env 設 AUTO_PUSH=1 且建議設 GITHUB_TOKEN）
+if [[ "${AUTO_PUSH:-0}" = "1" ]]; then
+    echo "【自動推送】正在推送到 GitHub…"
+    if [[ -f "${BUILDER_ROOT}/config.env" ]]; then
+        set -a
+        source "${BUILDER_ROOT}/config.env"
+        set +a
+    fi
+    if "${BUILDER_ROOT}/scripts/push-to-github.sh"; then
+        echo "  自動推送完成。"
+    else
+        echo "  自動推送失敗（請檢查 Git 遠端與憑證）。" >&2
+    fi
+    echo ""
+fi
+
 echo "=============================================="
 echo "  全部步驟已完成。"
 echo "=============================================="

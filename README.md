@@ -56,8 +56,21 @@
    git push origin master
    git push origin v1.0.2
    ```
+   或使用本專案提供的**一鍵推送腳本**（會推送目前分支與所有標籤）：
+   ```bash
+   ./scripts/push-to-github.sh
+   ```
    若使用 Personal Access Token 驗證，請勿將 token 寫入任何檔案或提交；可於推送時依提示輸入，或使用 Git 憑證儲存。
+
 4. 在 GitHub 專案頁面 **Releases** 中可依標籤建立 Release 並撰寫釋出說明。
+
+### 自動推送到 GitHub
+
+- **手動一鍵推送**：執行 `./scripts/push-to-github.sh` 會推送目前分支與所有標籤到 `origin`。
+- **建置完成後自動推送**：在 `config.env` 中設定：
+  - `AUTO_PUSH=1`：建置流程結束後自動執行推送。
+  - `GITHUB_TOKEN=你的 token`：非互動環境下使用（例如 CI），腳本會用此 token 推送，**請勿將 config.env 提交至版控**。
+- 若未設定 `GITHUB_TOKEN`，自動推送會使用目前 Git 設定的遠端與憑證（需已設定 credential helper 或 SSH）。
 
 ### 忽略的檔案（見 .gitignore）
 
@@ -79,6 +92,7 @@ zgate-tunnel-sdk-c-builder/
 ├── scripts/
 │   ├── setup-build-env.sh
 │   ├── setup-cross-toolchains.sh
+│   ├── push-to-github.sh
 │   ├── fetch-latest.sh
 │   ├── ensure-zgate-sdk.sh
 │   ├── apply-patch.sh
