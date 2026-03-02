@@ -1,0 +1,16 @@
+# Build and download artifacts
+work/
+output/
+build*/
+*.log
+.env
+.build-env.vcpkg
+
+# Output: generated zgate-tunnel-sdk-c versions
+zgate-tunnel-sdk-c-*/
+
+# IDE / OS
+.idea/
+.DS_Store
+*.swp
+*~
