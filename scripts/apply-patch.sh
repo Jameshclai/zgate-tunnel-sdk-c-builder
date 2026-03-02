@@ -74,8 +74,8 @@ sed -i "s/set(PROJECT_SEMVER \"\${DUMMY_SEMVER}\")/set(PROJECT_SEMVER \"${VER}\"
 # Quoted bundle_processor for cross-compile (upstream may have unquoted CMAKE_SYSTEM_PROCESSOR)
 sed -i 's/string(TOLOWER \${CMAKE_SYSTEM_PROCESSOR} bundle_processor)/string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" bundle_processor)/' "${OUT}/CMakeLists.txt"
 
-# CPACK_PACKAGE_VENDOR
-(grep -q 'CPACK_PACKAGE_VENDOR' "${OUT}/CMakeLists.txt" && sed -i 's/CPACK_PACKAGE_VENDOR.*/set(CPACK_PACKAGE_VENDOR "eCloudseal")/' "${OUT}/CMakeLists.txt") || true
+# CPACK_PACKAGE_VENDOR（整行替換，避免多出 set(）
+(grep -q 'CPACK_PACKAGE_VENDOR' "${OUT}/CMakeLists.txt" && sed -i 's/.*set(CPACK_PACKAGE_VENDOR.*/    set(CPACK_PACKAGE_VENDOR "eCloudseal")/' "${OUT}/CMakeLists.txt") || true
 
 # ---- deps/CMakeLists.txt: use ZGATE_SDK_DIR (inject path from env at build time or use cache) ----
 SDK_DIR_ESC="${ZGATE_SDK_DIR:-/none}"
@@ -128,6 +128,13 @@ for base in tunnel_cbs hosting tunnel_ctrl instance dns tunnel_model; do
     done
 done
 [[ -f "${OUT}/lib/zgate-tunnel-cbs/zgate_hosting.c" ]] && [[ -f "${OUT}/lib/zgate-tunnel-cbs/ziti_hosting.h" ]] && mv "${OUT}/lib/zgate-tunnel-cbs/ziti_hosting.h" "${OUT}/lib/zgate-tunnel-cbs/zgate_hosting.h" 2>/dev/null || true
+# lib/zgate-tunnel-cbs/include: ziti -> zgate 目錄與標頭檔，讓 #include <zgate/zgate_dns.h> 等可找到
+if [[ -d "${OUT}/lib/zgate-tunnel-cbs/include/ziti" ]]; then
+    mv "${OUT}/lib/zgate-tunnel-cbs/include/ziti" "${OUT}/lib/zgate-tunnel-cbs/include/zgate"
+fi
+while IFS= read -r -d '' h; do
+    mv "$h" "${h//ziti_/zgate_}"
+done < <(find "${OUT}/lib/zgate-tunnel-cbs/include/zgate" -maxdepth 1 -name 'ziti_*.h' -print0 2>/dev/null)
 
 # ---- lib/zgate-tunnel-cbs/CMakeLists.txt (target names and source list updated by global sed; ensure consistency) ----
 [[ -f "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" ]] && sed -i 's/ziti-tunnel-sdk-c/zgate-tunnel-sdk-c/g' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" && sed -i 's/ziti_tunnel_cbs/zgate_tunnel_cbs/g' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" && sed -i 's/ziti_hosting/zgate_hosting/g' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" && sed -i 's/ziti_tunnel_ctrl/zgate_tunnel_ctrl/g' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" && sed -i 's/ziti_instance/zgate_instance/g' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" && sed -i 's/ziti_dns/zgate_dns/g' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" && sed -i 's/ziti_tunnel_model/zgate_tunnel_model/g' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt"
@@ -151,9 +158,17 @@ import json
 with open(\"${PRESETS_JSON}\", \"r\") as f:
     data = json.load(f)
 for p in data.get(\"configurePresets\", []):
+    name = p.get(\"name\", \"\")
+    if not name or p.get(\"hidden\"):
+        continue
     inherits = p.get(\"inherits\", [])
-    if \"ci-build\" in inherits and \"name\" in p:
-        p[\"binaryDir\"] = \"\${sourceDir}/build-\" + p[\"name\"]
+    if isinstance(inherits, str):
+        inherits = [inherits]
+    # 為可選用的 ci- preset 設定獨立 binaryDir（ci-linux-arm64 等 inherits 為字串時也要有）
+    if name.startswith(\"ci-\") and (\"ci-build\" in inherits or any(s and s.startswith(\"ci-\") for s in inherits)):
+        p[\"binaryDir\"] = \"\${sourceDir}/build-\" + name
+    elif \"ci-build\" in inherits:
+        p[\"binaryDir\"] = \"\${sourceDir}/build-\" + name
 with open(\"${PRESETS_JSON}\", \"w\") as f:
     json.dump(data, f, indent=2)
 "

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ensure zgate-sdk-c-{tunnel_ver} exists; if not, call zgate-sdk-c-builder to produce it.
+# Use zgate-sdk-c from /home/user/zgate-sdk-c-builder output (do not build here).
 # Copyright (c) eCloudseal Inc.  All rights reserved.  Author: Lai Hou Chang (James Lai)
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,39 +17,33 @@ if [[ -z "${ZITI_TUNNEL_SDK_VERSION:-}" ]]; then
 fi
 
 VER="${ZITI_TUNNEL_SDK_VERSION}"
+# 參考使用 zgate-sdk-c-builder 的產出目錄，不在此專案內編譯 ziti-sdk-c
 SDK_BUILDER_OUTPUT="${ZGATE_SDK_BUILDER_OUTPUT:-/home/user/zgate-sdk-c-builder/output}"
 SDK_DIR="${SDK_BUILDER_OUTPUT}/zgate-sdk-c-${VER}"
 
+# 被 source 時 return 0 會結束此腳本並回到 build.sh；直接執行時 exit 0
 # If ZGATE_SDK_DIR already set and exists, use it
 if [[ -n "${ZGATE_SDK_DIR:-}" ]] && [[ -d "${ZGATE_SDK_DIR}" ]]; then
     echo "==> Using existing ZGATE_SDK_DIR=${ZGATE_SDK_DIR}"
     export ZGATE_SDK_DIR
-    exit 0
+    [[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0 || exit 0
 fi
 
-# Check sdk-builder output for zgate-sdk-c-{ver}
+# 優先使用同版本 zgate-sdk-c-{ver}
 if [[ -d "${SDK_DIR}" ]]; then
     export ZGATE_SDK_DIR="${SDK_DIR}"
-    echo "==> Found zgate-sdk-c-${VER} at ${SDK_DIR}"
-    exit 0
+    echo "==> Found zgate-sdk-c-${VER} at ${SDK_DIR} (from zgate-sdk-c-builder)"
+    [[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0 || exit 0
 fi
 
-# Build it via zgate-sdk-c-builder
-SDK_BUILDER_ROOT="${ZGATE_SDK_BUILDER_ROOT:-/home/user/zgate-sdk-c-builder}"
-if [[ ! -x "${SDK_BUILDER_ROOT}/build.sh" ]]; then
-    echo "Error: zgate-sdk-c-${VER} not found at ${SDK_DIR} and zgate-sdk-c-builder not found at ${SDK_BUILDER_ROOT}." >&2
-    echo "Run zgate-sdk-c-builder with ZITI_SDK_TAG=v${VER} first, or set ZGATE_SDK_DIR." >&2
-    exit 1
+# 否則使用 zgate-sdk-c-builder/output 下已有的最新版本
+LATEST=$(ls -d "${SDK_BUILDER_OUTPUT}"/zgate-sdk-c-* 2>/dev/null | tail -1)
+if [[ -n "${LATEST}" ]] && [[ -d "${LATEST}" ]]; then
+    export ZGATE_SDK_DIR="${LATEST}"
+    echo "==> Using ${ZGATE_SDK_DIR} (from zgate-sdk-c-builder, tunnel ${VER} may work with this SDK)"
+    [[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0 || exit 0
 fi
 
-echo "==> Building zgate-sdk-c-${VER} via zgate-sdk-c-builder..."
-export ZITI_SDK_TAG="v${VER}"
-export OUTPUT_DIR="${SDK_BUILDER_OUTPUT}"
-mkdir -p "${SDK_BUILDER_OUTPUT}"
-"${SDK_BUILDER_ROOT}/build.sh"
-export ZGATE_SDK_DIR="${SDK_BUILDER_OUTPUT}/zgate-sdk-c-${VER}"
-if [[ ! -d "${ZGATE_SDK_DIR}" ]]; then
-    echo "Error: zgate-sdk-c-builder did not produce ${ZGATE_SDK_DIR}" >&2
-    exit 1
-fi
-echo "==> zgate-sdk-c-${VER} ready at ${ZGATE_SDK_DIR}"
+echo "Error: No zgate-sdk-c found under ${SDK_BUILDER_OUTPUT}" >&2
+echo "Please run /home/user/zgate-sdk-c-builder/build.sh first, or set ZGATE_SDK_DIR / ZGATE_SDK_BUILDER_OUTPUT." >&2
+exit 1

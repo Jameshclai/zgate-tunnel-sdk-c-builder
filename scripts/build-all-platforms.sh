@@ -24,8 +24,8 @@ if [[ ! -d "${ZGATE_TUNNEL_OUT}" ]]; then
     exit 1
 fi
 
-# Presets to build (default: Linux x64 and arm64; can override with TUNNEL_PRESETS)
-DEFAULT_PRESETS="ci-linux-x64;ci-linux-arm64"
+# Presets to build (default: 所有 Linux 平台 x64/arm64/arm/mipsel；可透過 TUNNEL_PRESETS 覆寫)
+DEFAULT_PRESETS="ci-linux-x64;ci-linux-arm64;ci-linux-arm;ci-linux-mipsel"
 PRESETS="${TUNNEL_PRESETS:-$DEFAULT_PRESETS}"
 # Pass ZGATE_SDK_DIR so deps can find zgate-sdk-c
 export ZGATE_SDK_DIR="${ZGATE_SDK_DIR:-}"
@@ -43,17 +43,34 @@ fi
 
 cd "${ZGATE_TUNNEL_OUT}"
 IFS=';' read -ra PRESET_ARRAY <<< "$PRESETS"
+FAILED=""
 for preset in "${PRESET_ARRAY[@]}"; do
     preset="${preset// /}"
     [[ -z "$preset" ]] && continue
     echo "==> Configuring and building preset: ${preset}"
-    cmake --preset "${preset}" -DZGATE_SDK_DIR="${ZGATE_SDK_DIR}"
-    # binaryDir is build-<preset> after our patch
+    if ! cmake --preset "${preset}" -DZGATE_SDK_DIR="${ZGATE_SDK_DIR}" -DDISABLE_LIBSYSTEMD_FEATURE=ON; then
+        echo "==> Skipping build (configure failed): ${preset}" >&2
+        FAILED="${FAILED} ${preset}"
+        continue
+    fi
     BINARY_DIR="build-${preset}"
     if [[ ! -d "${BINARY_DIR}" ]]; then
         BINARY_DIR="build"
     fi
-    cmake --build "${BINARY_DIR}" --config Release
+    if [[ ! -d "${BINARY_DIR}" ]]; then
+        echo "==> Skipping build (binaryDir missing): ${preset}" >&2
+        FAILED="${FAILED} ${preset}"
+        continue
+    fi
+    if ! cmake --build "${BINARY_DIR}" --config Release; then
+        echo "==> Build failed: ${preset}" >&2
+        FAILED="${FAILED} ${preset}"
+        continue
+    fi
     echo "==> Done: ${preset} -> ${BINARY_DIR}"
 done
+if [[ -n "${FAILED}" ]]; then
+    echo "==> Some presets failed:${FAILED}" >&2
+    exit 1
+fi
 echo "==> All platform builds complete."
