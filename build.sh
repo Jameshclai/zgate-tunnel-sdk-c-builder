@@ -14,6 +14,8 @@ export OUTPUT_DIR="${OUTPUT_DIR:-${BUILDER_ROOT}/output}"
 
 echo "==> Step 1: Ensure build environment"
 "${BUILDER_ROOT}/scripts/setup-build-env.sh"
+[[ -f "${BUILDER_ROOT}/.build-env.vcpkg" ]] && source "${BUILDER_ROOT}/.build-env.vcpkg"
+[[ -f "${BUILDER_ROOT}/.build-env.cross" ]] && source "${BUILDER_ROOT}/.build-env.cross"
 
 echo "==> Step 2: Fetch latest ziti-tunnel-sdk-c"
 source "${BUILDER_ROOT}/scripts/fetch-latest.sh"
