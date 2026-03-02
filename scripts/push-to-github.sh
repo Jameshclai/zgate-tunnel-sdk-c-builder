@@ -26,6 +26,11 @@ fi
 
 echo "==> Pushing to ${REMOTE} (branch: ${BRANCH})..."
 git push "${push_url}" "${BRANCH}"
+# 若目前為 master，一併更新遠端 main（GitHub 預設分支常為 main，須同步以免首頁顯示舊程式）
+if [[ "${BRANCH}" = "master" ]]; then
+    echo "==> Syncing remote main with master..."
+    git push "${push_url}" "${BRANCH}:refs/heads/main"
+fi
 echo "==> Pushing tags..."
 git push "${push_url}" --tags
 echo "==> Push to GitHub done."

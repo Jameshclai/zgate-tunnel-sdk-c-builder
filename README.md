@@ -66,7 +66,7 @@
 
 ### 自動推送到 GitHub
 
-- **手動一鍵推送**：執行 `./scripts/push-to-github.sh` 會推送目前分支與所有標籤到 `origin`。
+- **手動一鍵推送**：執行 `./scripts/push-to-github.sh` 會推送目前分支與所有標籤到 `origin`；若目前分支為 `master`，會一併更新遠端 `main`，避免 GitHub 預設分支顯示舊程式。
 - **建置完成後自動推送**：在 `config.env` 中設定：
   - `AUTO_PUSH=1`：建置流程結束後自動執行推送。
   - `GITHUB_TOKEN=你的 token`：非互動環境下使用（例如 CI），腳本會用此 token 推送，**請勿將 config.env 提交至版控**。
@@ -78,6 +78,11 @@
 - `.build-env.vcpkg`、`.build-env.cross`：執行期產生的環境變數檔
 - `.cross-toolchains/`：交叉編譯工具鏈安裝目錄
 - `config.env`：本機設定（請勿提交含密碼或 token 的設定）
+
+### 若 GitHub 顯示舊程式或 Releases 仍是 1.0.1
+
+- **程式碼看起來是舊的**：GitHub 預設分支多為 `main`，若只推送到 `master`，首頁仍會顯示 `main` 的舊內容。請執行一次 `GITHUB_TOKEN=你的token ./scripts/push-to-github.sh`（腳本會同時更新 `master` 與 `main`），或手動執行：`git push origin master:refs/heads/main`。
+- **Releases 頁面只看到 1.0.1**：Git 標籤（tag）與 GitHub「Releases」不同；標籤 `v1.0.2` 已存在，但**須在 GitHub 建立 Release**：進入專案 → **Releases** → **Draft a new release** → 選擇標籤 **v1.0.2** → 填寫標題與說明 → **Publish release**。
 
 ## 目錄結構
 
