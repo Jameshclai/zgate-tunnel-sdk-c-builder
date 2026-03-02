@@ -27,6 +27,12 @@ fi
 # Presets to build (default: 7 平台；Windows 用 MinGW 以支援 Linux 主機交叉編譯)
 DEFAULT_PRESETS="ci-linux-x64;ci-linux-arm64;ci-linux-arm;ci-macOS-x64;ci-macOS-arm64;ci-windows-x64-mingw;ci-windows-arm64-mingw"
 PRESETS="${TUNNEL_PRESETS:-$DEFAULT_PRESETS}"
+# 若無 aarch64-w64-mingw32 或已設 SKIP_WINDOWS_ARM64，則略過 Windows arm64
+if [[ "${SKIP_WINDOWS_ARM64:-0}" = "1" ]] || ! command -v aarch64-w64-mingw32-gcc &>/dev/null; then
+    PRESETS="${PRESETS//ci-windows-arm64-mingw;/}"
+    PRESETS="${PRESETS//ci-windows-arm64-mingw/}"
+    [[ -n "${PRESETS}" ]] && [[ "${PRESETS}" != *ci-windows-arm64* ]] && echo "==> Skipping ci-windows-arm64-mingw (toolchain not available); building other presets."
+fi
 # Pass ZGATE_SDK_DIR so deps can find zgate-sdk-c
 export ZGATE_SDK_DIR="${ZGATE_SDK_DIR:-}"
 if [[ -z "${ZGATE_SDK_DIR}" ]] && [[ -d "${ZGATE_SDK_BUILDER_OUTPUT:-/home/user/zgate-sdk-c-builder/output}/zgate-sdk-c-${ZITI_TUNNEL_SDK_VERSION:-}" ]]; then

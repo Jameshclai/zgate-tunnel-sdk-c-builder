@@ -27,14 +27,17 @@ if ! command -v x86_64-w64-mingw32-gcc &>/dev/null && ! command -v x86_64-w64-mi
     echo "    MinGW-w64 (x86_64) installed."
 fi
 
-# ---- Windows arm64: MinGW（必須有，不准略過；sudo 應已在建置環境階段取得）----
-if ! command -v aarch64-w64-mingw32-gcc &>/dev/null; then
-    echo "    Installing MinGW-w64 for Windows arm64..."
-    if apt-cache show gcc-aarch64-w64-mingw32 &>/dev/null 2>&1; then
-        sudo apt-get update -qq
-        sudo apt-get install -y gcc-aarch64-w64-mingw32 g++-aarch64-w64-mingw32
-    fi
+# ---- Windows arm64: MinGW（若無法安裝則略過此平台，其餘平台照常建置）----
+rm -f "${BUILDER_ROOT}/.cross-toolchains.env"
+if [[ "${SKIP_WINDOWS_ARM64:-0}" = "1" ]]; then
+    echo "    Skipping Windows arm64 toolchain (SKIP_WINDOWS_ARM64=1)."
+    echo 'export SKIP_WINDOWS_ARM64=1' > "${BUILDER_ROOT}/.cross-toolchains.env"
+elif ! command -v aarch64-w64-mingw32-gcc &>/dev/null; then
+    echo "    Installing MinGW-w64 for Windows arm64 (gcc-aarch64-w64-mingw32, g++-aarch64-w64-mingw32)..."
+    sudo apt-get update -qq
+    sudo apt-get install -y gcc-aarch64-w64-mingw32 g++-aarch64-w64-mingw32 2>/dev/null || true
     if ! command -v aarch64-w64-mingw32-gcc &>/dev/null; then
+        echo "    (若出現 Unable to locate package：此套件多數 Ubuntu/Debian 預設源沒有，屬正常；將略過 Windows arm64 或嘗試從來源編譯)"
         echo "    Trying to build aarch64-w64-mingw32 from source (Windows-on-ARM-Experiments)..."
         BUILD_DIR="${CROSS_DIR}/mingw-woarm64-build"
         mkdir -p "${CROSS_DIR}"
@@ -46,10 +49,14 @@ if ! command -v aarch64-w64-mingw32-gcc &>/dev/null; then
         fi
     fi
     if ! command -v aarch64-w64-mingw32-gcc &>/dev/null; then
-        echo "Error: aarch64-w64-mingw32 not found. Install gcc-aarch64-w64-mingw32 (e.g. from PPA) or run Windows arm64 build on Windows." >&2
-        exit 1
+        echo "    Warning: aarch64-w64-mingw32 not found. Skipping Windows arm64 (ci-windows-arm64-mingw); other platforms will still build."
+        echo "    To enable: install gcc-aarch64-w64-mingw32 (e.g. from PPA) or set TUNNEL_PRESETS in config.env without ci-windows-arm64-mingw."
+        echo 'export SKIP_WINDOWS_ARM64=1' > "${BUILDER_ROOT}/.cross-toolchains.env"
+    else
+        echo "    MinGW-w64 (Windows arm64) ready."
     fi
-    echo "    MinGW-w64 (Windows arm64) ready."
+else
+    echo "    MinGW-w64 (Windows arm64) already available."
 fi
 
 # ---- Darwin (macOS): osxcross ----

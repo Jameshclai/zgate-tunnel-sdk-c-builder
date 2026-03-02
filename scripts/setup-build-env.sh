@@ -106,4 +106,5 @@ if [[ -d "${OSXCROSS_ROOT}/target/bin" ]]; then
     echo "export OSXCROSS_ROOT=\"${OSXCROSS_ROOT}\"" >> "${BUILDER_ROOT}/.build-env.cross"
     echo "export PATH=\"${OSXCROSS_ROOT}/target/bin:\${PATH}\"" >> "${BUILDER_ROOT}/.build-env.cross"
 fi
+[[ -f "${BUILDER_ROOT}/.cross-toolchains.env" ]] && cat "${BUILDER_ROOT}/.cross-toolchains.env" >> "${BUILDER_ROOT}/.build-env.cross"
 echo "==> Build environment ready."

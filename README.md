@@ -33,7 +33,11 @@
 | `ZITI_TUNNEL_SDK_TAG` | 固定 tunnel 版本（如 v1.10.10） | 不設則用最新 release |
 | `TUNNEL_PRESETS` | 要編譯的 CMake presets（分號分隔） | 7 平台（Darwin/Linux/Windows）；Windows x86_64 使用 MinGW 以支援 Linux 主機交叉編譯 |
 | `SKIP_CROSS_TOOLCHAINS` | 設為 1 略過 Darwin/Windows 工具鏈安裝 | 不設則會自動安裝 MinGW、osxcross 等 |
+| `SKIP_WINDOWS_ARM64` | 設為 1 略過 Windows arm64 建置（僅建置其餘 6 平台） | 不設則會嘗試安裝/編譯 aarch64-w64-mingw32，失敗則自動略過 |
 | `SKIP_ENV_CHECK` | 設為 1 略過環境檢查 | 不設則執行檢查 |
+
+若測試機或環境無 **aarch64-w64-mingw32**（Windows arm64 交叉編譯），建置會**自動略過 ci-windows-arm64-mingw**，其餘 6 個平台照常編譯，不會整機失敗。  
+**說明**：`gcc-aarch64-w64-mingw32` / `g++-aarch64-w64-mingw32` 目前**不在多數 Ubuntu/Debian 預設 apt 源**內（GCC 對 Windows ARM64 支援較新），若 `apt-get install` 出現「Unable to locate package」屬正常，腳本會略過該平台或嘗試從 [Windows-on-ARM-Experiments/mingw-woarm64-build](https://github.com/Windows-on-ARM-Experiments/mingw-woarm64-build) 編譯。
 
 ## Git 版控與釋出
 
@@ -82,7 +86,12 @@
 ### 若 GitHub 顯示舊程式或 Releases 仍是 1.0.1
 
 - **程式碼看起來是舊的**：GitHub 預設分支多為 `main`，若只推送到 `master`，首頁仍會顯示 `main` 的舊內容。請執行一次 `GITHUB_TOKEN=你的token ./scripts/push-to-github.sh`（腳本會同時更新 `master` 與 `main`），或手動執行：`git push origin master:refs/heads/main`。
-- **Releases 頁面只看到 1.0.1**：Git 標籤（tag）與 GitHub「Releases」不同；標籤 `v1.0.2` 已存在，但**須在 GitHub 建立 Release**：進入專案 → **Releases** → **Draft a new release** → 選擇標籤 **v1.0.2** → 填寫標題與說明 → **Publish release**。
+- **Releases 頁面只看到 1.0.1**：Git 標籤與 GitHub「Releases」是分開的；標籤 `v1.0.2` 已存在，但**必須手動建立 Release** 才會出現在 [Releases 頁面](https://github.com/Jameshclai/zgate-tunnel-sdk-c-builder/releases)：
+  1. 開啟 **Releases** → **Draft a new release**
+  2. **Choose a tag** 選擇 **v1.0.2**（若無則先推送標籤）
+  3. **Release title** 填寫例如：Release 1.0.2
+  4. 填寫說明後點 **Publish release**
+  - 或使用腳本（需 token 具 `repo` 權限）：`GITHUB_TOKEN=你的token ./scripts/create-github-release.sh v1.0.2 "Release 1.0.2"`
 
 ## 目錄結構
 
@@ -98,6 +107,7 @@ zgate-tunnel-sdk-c-builder/
 │   ├── setup-build-env.sh
 │   ├── setup-cross-toolchains.sh
 │   ├── push-to-github.sh
+│   ├── create-github-release.sh
 │   ├── fetch-latest.sh
 │   ├── ensure-zgate-sdk.sh
 │   ├── apply-patch.sh

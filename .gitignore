@@ -7,6 +7,7 @@ build*/
 .env
 .build-env.vcpkg
 .build-env.cross
+.cross-toolchains.env
 
 # Output: generated zgate-tunnel-sdk-c versions
 zgate-tunnel-sdk-c-*/
