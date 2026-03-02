@@ -77,6 +77,24 @@ sed -i 's/string(TOLOWER \${CMAKE_SYSTEM_PROCESSOR} bundle_processor)/string(TOL
 # CPACK_PACKAGE_VENDOR（整行替換，避免多出 set(）
 (grep -q 'CPACK_PACKAGE_VENDOR' "${OUT}/CMakeLists.txt" && sed -i 's/.*set(CPACK_PACKAGE_VENDOR.*/    set(CPACK_PACKAGE_VENDOR "eCloudseal")/' "${OUT}/CMakeLists.txt") || true
 
+# 當以 -DGIT_VERSION=vX.Y.Z 傳入時，tag-tweak 的 regex 不會匹配，PROJECT_TAG 會是空；先存成 SAVED_SIMPLE_GIT_VERSION，後面再還原，確保顯示單一 vX.Y.Z
+sed -i '/^unset(GIT_VERSION CACHE)$/i\
+if(PROJECT_TAG STREQUAL "")\
+    set(SAVED_SIMPLE_GIT_VERSION ${GIT_VERSION})\
+    set(PROJECT_TAG ${GIT_VERSION})\
+    set(PROJECT_TWEAK "0")\
+endif()\
+' "${OUT}/CMakeLists.txt"
+# 還原簡單版本，避免出現 v1.10.10.v1.10.10
+sed -i '/^set(PROJECT_VERSION \${GIT_VERSION})$/i\
+if(DEFINED SAVED_SIMPLE_GIT_VERSION)\
+    set(GIT_VERSION ${SAVED_SIMPLE_GIT_VERSION})\
+endif()\
+' "${OUT}/CMakeLists.txt"
+
+# ---- CMakePresets.json: Linux 主機交叉編譯 Windows 時使用 MinGW 工具鏈（x86_64-w64-mingw32-gcc/g++）
+[[ -f "${OUT}/CMakePresets.json" ]] && sed -i 's/"CMAKE_C_COMPILER": "gcc"/"CMAKE_C_COMPILER": "x86_64-w64-mingw32-gcc"/g; s/"CMAKE_CXX_COMPILER": "g++"/"CMAKE_CXX_COMPILER": "x86_64-w64-mingw32-g++"/g' "${OUT}/CMakePresets.json"
+
 # ---- deps/CMakeLists.txt: use ZGATE_SDK_DIR (inject path from env at build time or use cache) ----
 SDK_DIR_ESC="${ZGATE_SDK_DIR:-/none}"
 SDK_DIR_ESC="${SDK_DIR_ESC//\//\\/}"

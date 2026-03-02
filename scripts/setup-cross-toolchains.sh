@@ -16,26 +16,47 @@ fi
 
 [[ "${SKIP_CROSS_TOOLCHAINS:-0}" = "1" ]] && { echo "==> Skipping cross toolchains (SKIP_CROSS_TOOLCHAINS=1)"; exit 0; }
 
+# 僅在 TUNNEL_PRESETS 有指定對應平台時才安裝該工具鏈，避免一鍵建置 Linux+Windows 時安裝 osxcross
+PRESETS="${TUNNEL_PRESETS:-}"
+NEED_MACOS=0
+NEED_WINDOWS_ARM64=0
+[[ "${PRESETS}" = *ci-macOS-x64* || "${PRESETS}" = *ci-macOS-arm64* ]] && NEED_MACOS=1
+[[ "${PRESETS}" = *ci-windows-arm64-mingw* ]] && NEED_WINDOWS_ARM64=1
+# 若 TUNNEL_PRESETS 未設定則預設全部需要（相容舊行為）
+[[ -z "${PRESETS}" ]] && NEED_MACOS=1 && NEED_WINDOWS_ARM64=1
+
 echo "==> Ensuring Darwin and Windows cross-compilation toolchains..."
 
 need_sudo=
+# 非互動模式：若有 SUDO_PASS 則用 sudo -S 執行後續 sudo 指令
+sudo_cmd() {
+    if [[ -n "${SUDO_PASS:-}" ]]; then
+        echo "${SUDO_PASS}" | sudo -S -p "" "$@"
+    else
+        sudo "$@"
+    fi
+}
+
 # ---- Windows x86_64: MinGW（由 setup-build-env 階段已取得 sudo，此處直接安裝）----
 if ! command -v x86_64-w64-mingw32-gcc &>/dev/null && ! command -v x86_64-w64-mingw32-g++ &>/dev/null; then
     echo "    Installing MinGW-w64 for Windows x86_64..."
-    sudo apt-get update -qq
-    sudo apt-get install -y gcc-mingw-w64 g++-mingw-w64
+    sudo_cmd apt-get update -qq
+    sudo_cmd apt-get install -y gcc-mingw-w64 g++-mingw-w64
     echo "    MinGW-w64 (x86_64) installed."
 fi
 
-# ---- Windows arm64: MinGW（若無法安裝則略過此平台，其餘平台照常建置）----
+# ---- Windows arm64: MinGW（若 TUNNEL_PRESETS 未含 ci-windows-arm64-mingw 則略過）----
 rm -f "${BUILDER_ROOT}/.cross-toolchains.env"
-if [[ "${SKIP_WINDOWS_ARM64:-0}" = "1" ]]; then
+if [[ "${NEED_WINDOWS_ARM64}" = "0" ]]; then
+    echo "    Skipping Windows arm64 toolchain (not in TUNNEL_PRESETS)."
+    echo 'export SKIP_WINDOWS_ARM64=1' > "${BUILDER_ROOT}/.cross-toolchains.env"
+elif [[ "${SKIP_WINDOWS_ARM64:-0}" = "1" ]]; then
     echo "    Skipping Windows arm64 toolchain (SKIP_WINDOWS_ARM64=1)."
     echo 'export SKIP_WINDOWS_ARM64=1' > "${BUILDER_ROOT}/.cross-toolchains.env"
 elif ! command -v aarch64-w64-mingw32-gcc &>/dev/null; then
     echo "    Installing MinGW-w64 for Windows arm64 (gcc-aarch64-w64-mingw32, g++-aarch64-w64-mingw32)..."
-    sudo apt-get update -qq
-    sudo apt-get install -y gcc-aarch64-w64-mingw32 g++-aarch64-w64-mingw32 2>/dev/null || true
+    sudo_cmd apt-get update -qq
+    sudo_cmd apt-get install -y gcc-aarch64-w64-mingw32 g++-aarch64-w64-mingw32 2>/dev/null || true
     if ! command -v aarch64-w64-mingw32-gcc &>/dev/null; then
         echo "    (若出現 Unable to locate package：此套件多數 Ubuntu/Debian 預設源沒有，屬正常；將略過 Windows arm64 或嘗試從來源編譯)"
         echo "    Trying to build aarch64-w64-mingw32 from source (Windows-on-ARM-Experiments)..."
@@ -59,8 +80,10 @@ else
     echo "    MinGW-w64 (Windows arm64) already available."
 fi
 
-# ---- Darwin (macOS): osxcross ----
-if [[ "$(uname -s)" != "Darwin" ]]; then
+# ---- Darwin (macOS): osxcross（僅當 TUNNEL_PRESETS 含 ci-macOS-* 時執行）----
+if [[ "${NEED_MACOS}" = "0" ]]; then
+    echo "    Skipping osxcross (no macOS preset in TUNNEL_PRESETS)."
+elif [[ "$(uname -s)" != "Darwin" ]]; then
     if [[ ! -x "${OSXCROSS_ROOT}/target/bin/o64-clang" ]] && [[ ! -x "${OSXCROSS_ROOT}/target/bin/arm64-apple-darwin20.4-clang" ]]; then
         echo "    Setting up osxcross for Darwin (macOS) cross-compile..."
         mkdir -p "${CROSS_DIR}"

@@ -24,6 +24,11 @@ if [[ ! -d "${ZGATE_TUNNEL_OUT}" ]]; then
     exit 1
 fi
 
+# 從產出目錄名取得 tunnel SDK 版本（與 ziti-tunnel-sdk-c 一致），傳給 CMake 避免 git describe 用到上層 repo 的 tag
+TUNNEL_SDK_VERSION=$(basename "${ZGATE_TUNNEL_OUT}" | sed 's/^zgate-tunnel-sdk-c-//')
+[[ -z "${TUNNEL_SDK_VERSION}" ]] && TUNNEL_SDK_VERSION="1.10.10"
+echo "==> Using tunnel version for binary: ${TUNNEL_SDK_VERSION}"
+
 # Presets to build (default: 7 平台；Windows 用 MinGW 以支援 Linux 主機交叉編譯)
 DEFAULT_PRESETS="ci-linux-x64;ci-linux-arm64;ci-linux-arm;ci-macOS-x64;ci-macOS-arm64;ci-windows-x64-mingw;ci-windows-arm64-mingw"
 PRESETS="${TUNNEL_PRESETS:-$DEFAULT_PRESETS}"
@@ -59,7 +64,7 @@ for preset in "${PRESET_ARRAY[@]}"; do
     elif [[ "${preset}" == ci-macOS-x64 ]] && [[ -n "${OSXCROSS_ROOT:-}" ]] && [[ -f "${ZGATE_TUNNEL_OUT}/toolchains/macOS-x64-osxcross.cmake" ]]; then
         EXTRA_CMAKE=(-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="${ZGATE_TUNNEL_OUT}/toolchains/macOS-x64-osxcross.cmake")
     fi
-    cmake --preset "${preset}" -DZGATE_SDK_DIR="${ZGATE_SDK_DIR}" -DDISABLE_LIBSYSTEMD_FEATURE=ON "${EXTRA_CMAKE[@]}"
+    cmake --preset "${preset}" -DZGATE_SDK_DIR="${ZGATE_SDK_DIR}" -DGIT_VERSION="v${TUNNEL_SDK_VERSION}" -DDISABLE_LIBSYSTEMD_FEATURE=ON "${EXTRA_CMAKE[@]}"
     BINARY_DIR="build-${preset}"
     if [[ ! -d "${BINARY_DIR}" ]]; then
         BINARY_DIR="build"
