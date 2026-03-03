@@ -77,8 +77,10 @@ if [[ -d "${OUT}" ]]; then
     for build_dir in "${OUT}"/build-*/; do
         [[ -d "${build_dir}" ]] || continue
         preset_name=$(basename "${build_dir}")
-        # 主要可執行檔：zgate-edge-tunnel（Unix）或 zgate-edge-tunnel.exe（Windows）
-        for exe in "${build_dir}programs/zgate-edge-tunnel/Release/zgate-edge-tunnel" "${build_dir}programs/zgate-edge-tunnel/Release/zgate-edge-tunnel.exe"; do
+        # 主要可執行檔：Unix 多在 Release/ 下；Windows MinGW 可能為 Release/ 或直接在 programs/zgate-edge-tunnel/
+        for exe in "${build_dir}programs/zgate-edge-tunnel/Release/zgate-edge-tunnel" \
+                   "${build_dir}programs/zgate-edge-tunnel/Release/zgate-edge-tunnel.exe" \
+                   "${build_dir}programs/zgate-edge-tunnel/zgate-edge-tunnel.exe"; do
             if [[ -f "${exe}" ]]; then
                 echo "  [${preset_name}]"
                 echo "    ${exe}"
