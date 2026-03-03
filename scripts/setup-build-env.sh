@@ -26,19 +26,30 @@ NEED_SUDO=
 [[ ${#MISSING[@]} -gt 0 ]] && NEED_SUDO=1
 [[ "${SKIP_CROSS_TOOLCHAINS:-0}" != "1" ]] && NEED_SUDO=1
 if [[ -n "${NEED_SUDO}" ]]; then
-    echo "    即將安裝建置與交叉編譯所需套件，可能需要 sudo 權限。"
-    read -r -p "    是否繼續並輸入 sudo 密碼（若需要）? [Y/n] " ans
-    if [[ "${ans,,}" != "n" && "${ans,,}" != "no" ]]; then
-        if sudo -v 2>/dev/null; then
+    if [[ -n "${SUDO_PASS:-}" ]]; then
+        # 非互動模式（CI/遠端）：以環境變數傳入 sudo 密碼，勿提交至版控
+        if echo "${SUDO_PASS}" | sudo -S -v 2>/dev/null; then
             SUDO_OK=1
-            echo "    sudo 已就緒，接著安裝所需套件。"
+            echo "    sudo 已就緒（非互動模式）。"
         else
-            echo "Error: sudo 權限取得失敗，無法安裝套件。" >&2
+            echo "Error: sudo 權限取得失敗（SUDO_PASS 無效）。" >&2
             exit 1
         fi
     else
-        echo "    已略過 sudo；將略過需 sudo 的交叉編譯工具鏈安裝。" >&2
-        export SKIP_CROSS_TOOLCHAINS=1
+        echo "    即將安裝建置與交叉編譯所需套件，可能需要 sudo 權限。"
+        read -r -p "    是否繼續並輸入 sudo 密碼（若需要）? [Y/n] " ans
+        if [[ "${ans,,}" != "n" && "${ans,,}" != "no" ]]; then
+            if sudo -v 2>/dev/null; then
+                SUDO_OK=1
+                echo "    sudo 已就緒，接著安裝所需套件。"
+            else
+                echo "Error: sudo 權限取得失敗，無法安裝套件。" >&2
+                exit 1
+            fi
+        else
+            echo "    已略過 sudo；將略過需 sudo 的交叉編譯工具鏈安裝。" >&2
+            export SKIP_CROSS_TOOLCHAINS=1
+        fi
     fi
 fi
 

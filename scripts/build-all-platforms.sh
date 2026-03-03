@@ -64,6 +64,8 @@ for preset in "${PRESET_ARRAY[@]}"; do
     elif [[ "${preset}" == ci-macOS-x64 ]] && [[ -n "${OSXCROSS_ROOT:-}" ]] && [[ -f "${ZGATE_TUNNEL_OUT}/toolchains/macOS-x64-osxcross.cmake" ]]; then
         EXTRA_CMAKE=(-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="${ZGATE_TUNNEL_OUT}/toolchains/macOS-x64-osxcross.cmake")
     fi
+    # MinGW 交叉編譯時避免 Ninja RPATH 錯誤（非 ELF 平台）
+    [[ "${preset}" == ci-windows-x64-mingw* ]] || [[ "${preset}" == ci-windows-arm64-mingw* ]] && EXTRA_CMAKE+=(-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON)
     cmake --preset "${preset}" -DZGATE_SDK_DIR="${ZGATE_SDK_DIR}" -DGIT_VERSION="v${TUNNEL_SDK_VERSION}" -DDISABLE_LIBSYSTEMD_FEATURE=ON "${EXTRA_CMAKE[@]}"
     BINARY_DIR="build-${preset}"
     if [[ ! -d "${BINARY_DIR}" ]]; then

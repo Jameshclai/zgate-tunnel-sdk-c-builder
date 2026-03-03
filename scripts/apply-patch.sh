@@ -77,9 +77,9 @@ sed -i 's/string(TOLOWER \${CMAKE_SYSTEM_PROCESSOR} bundle_processor)/string(TOL
 # CPACK_PACKAGE_VENDOR（整行替換，避免多出 set(）
 (grep -q 'CPACK_PACKAGE_VENDOR' "${OUT}/CMakeLists.txt" && sed -i 's/.*set(CPACK_PACKAGE_VENDOR.*/    set(CPACK_PACKAGE_VENDOR "eCloudseal")/' "${OUT}/CMakeLists.txt") || true
 
-# 當以 -DGIT_VERSION=vX.Y.Z 傳入時，tag-tweak 的 regex 不會匹配，PROJECT_TAG 會是空；先存成 SAVED_SIMPLE_GIT_VERSION，後面再還原，確保顯示單一 vX.Y.Z
+# 當以 -DGIT_VERSION=vX.Y.Z 傳入時，tag-tweak 的 regex 可能不匹配（無 hyphen），PROJECT_TAG/TWEAK 會等於 GIT_VERSION；先存成 SAVED_SIMPLE_GIT_VERSION，後面再還原，確保顯示單一 vX.Y.Z
 sed -i '/^unset(GIT_VERSION CACHE)$/i\
-if(PROJECT_TAG STREQUAL "")\
+if(PROJECT_TAG STREQUAL "" OR (PROJECT_TAG STREQUAL "\${GIT_VERSION}" AND PROJECT_TWEAK STREQUAL "\${GIT_VERSION}"))\
     set(SAVED_SIMPLE_GIT_VERSION ${GIT_VERSION})\
     set(PROJECT_TAG ${GIT_VERSION})\
     set(PROJECT_TWEAK "0")\
@@ -132,6 +132,33 @@ DEPS_CMAKE
 sed -i 's/DEFAULT_EXECUTABLE_NAME="ziti-edge-tunnel"/DEFAULT_EXECUTABLE_NAME="zgate-edge-tunnel"/' "${OUT}/programs/CMakeLists.txt"
 sed -i 's/add_subdirectory(ziti-edge-tunnel)/add_subdirectory(zgate-edge-tunnel)/' "${OUT}/programs/CMakeLists.txt"
 
+# ---- lib/zgate-tunnel/lwip/lwipopts.h: MinGW 交叉編譯時 CMAKE_C_BYTE_ORDER 可能未定義，先 include arch.h 再 fallback ----
+LWIPOPTS="${OUT}/lib/zgate-tunnel/lwip/lwipopts.h"
+if [[ -f "${LWIPOPTS}" ]] && grep -q 'BYTE_ORDER CMAKE_C_BYTE_ORDER' "${LWIPOPTS}"; then
+    awk '
+        /^#ifndef BYTE_ORDER$/ { in_block=1; print; next }
+        in_block && /^#define BYTE_ORDER CMAKE_C_BYTE_ORDER/ {
+            print "// include arch.h first; fallback to LITTLE_ENDIAN when CMAKE_C_BYTE_ORDER not set (e.g. MinGW cross)"
+            print "#include \"lwip/arch.h\""
+            print "#if defined(CMAKE_C_BYTE_ORDER)"
+            print "#define BYTE_ORDER CMAKE_C_BYTE_ORDER"
+            print "#else"
+            print "#define BYTE_ORDER LITTLE_ENDIAN"
+            print "#endif"
+            next
+        }
+        in_block && /^#include \"lwip\/arch.h\"/ { next }
+        in_block && /^#endif$/ { in_block=0 }
+        { print }
+    ' "${LWIPOPTS}" > "${LWIPOPTS}.tmp" && mv "${LWIPOPTS}.tmp" "${LWIPOPTS}"
+fi
+
+# ---- lib/zgate-tunnel/CMakeLists.txt: lwip BYTE_ORDER 僅在 CMAKE_C_BYTE_ORDER 非空時傳遞，避免 MinGW 傳空字串 ----
+if grep -q 'target_compile_definitions(lwipcore PUBLIC CMAKE_C_BYTE_ORDER' "${OUT}/lib/zgate-tunnel/CMakeLists.txt" 2>/dev/null; then
+    sed -i 's/target_compile_definitions(lwipcore PUBLIC CMAKE_C_BYTE_ORDER=\${CMAKE_C_BYTE_ORDER})/if(CMAKE_C_BYTE_ORDER)\n    target_compile_definitions(lwipcore PUBLIC CMAKE_C_BYTE_ORDER=\${CMAKE_C_BYTE_ORDER})\nendif()/' "${OUT}/lib/zgate-tunnel/CMakeLists.txt"
+fi
+# ---- lib/zgate-tunnel/CMakeLists.txt: MinGW 交叉編譯時選 win32 port（WIN32/CMAKE_SYSTEM_NAME/編譯器名） ----
+sed -i 's/^if(WIN32)$/if(WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_C_COMPILER MATCHES "mingw32")/' "${OUT}/lib/zgate-tunnel/CMakeLists.txt"
 # ---- lib/zgate-tunnel/CMakeLists.txt: source file names and target names (ziti -> zgate) ----
 sed -i 's/ziti_tunnel\.c/zgate_tunnel.c/g' "${OUT}/lib/zgate-tunnel/CMakeLists.txt"
 sed -i 's/ziti-tunnel-sdk-c/zgate-tunnel-sdk-c/g' "${OUT}/lib/zgate-tunnel/CMakeLists.txt"
@@ -154,9 +181,24 @@ while IFS= read -r -d '' h; do
     mv "$h" "${h//ziti_/zgate_}"
 done < <(find "${OUT}/lib/zgate-tunnel-cbs/include/zgate" -maxdepth 1 -name 'ziti_*.h' -print0 2>/dev/null)
 
+# ---- lib/zgate-tunnel-cbs/CMakeLists.txt: MinGW 時用 dnsapi 取代 resolv ----
+[[ -f "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" ]] && sed -i 's/if(CMAKE_SYSTEM_NAME STREQUAL Windows)/if(CMAKE_SYSTEM_NAME STREQUAL Windows OR CMAKE_C_COMPILER MATCHES "mingw32")/' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt"
 # ---- lib/zgate-tunnel-cbs/CMakeLists.txt (target names and source list updated by global sed; ensure consistency) ----
 [[ -f "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" ]] && sed -i 's/ziti-tunnel-sdk-c/zgate-tunnel-sdk-c/g' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" && sed -i 's/ziti_tunnel_cbs/zgate_tunnel_cbs/g' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" && sed -i 's/ziti_hosting/zgate_hosting/g' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" && sed -i 's/ziti_tunnel_ctrl/zgate_tunnel_ctrl/g' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" && sed -i 's/ziti_instance/zgate_instance/g' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" && sed -i 's/ziti_dns/zgate_dns/g' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt" && sed -i 's/ziti_tunnel_model/zgate_tunnel_model/g' "${OUT}/lib/zgate-tunnel-cbs/CMakeLists.txt"
 
+# ---- programs/zgate-edge-tunnel/CMakeLists.txt: wintun.dll 路徑（wintun 壓縮檔為 bin/amd64 非 x86_64） ----
+WINTUN_CMAKE="${OUT}/programs/zgate-edge-tunnel/CMakeLists.txt"
+if [[ -f "${WINTUN_CMAKE}" ]] && grep -q 'wintun_SOURCE_DIR' "${WINTUN_CMAKE}"; then
+    # 替換單行 set 為 x86_64 時用 amd64 的區塊
+    sed -i 's|set(wintun_dll "\${wintun_SOURCE_DIR}/bin/\${CMAKE_SYSTEM_PROCESSOR}/wintun.dll")|if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")\n    set(wintun_dll "${wintun_SOURCE_DIR}/bin/amd64/wintun.dll")\nelse()\n    set(wintun_dll "${wintun_SOURCE_DIR}/bin/${CMAKE_SYSTEM_PROCESSOR}/wintun.dll")\nendif()|' "${WINTUN_CMAKE}"
+fi
+# ---- programs/zgate-edge-tunnel/CMakeLists.txt: MinGW 交叉編譯視為 Windows（netif_driver、instance） ----
+if [[ -f "${OUT}/programs/zgate-edge-tunnel/CMakeLists.txt" ]]; then
+    sed -i 's/if(CMAKE_SYSTEM_NAME STREQUAL Windows)/if(CMAKE_SYSTEM_NAME STREQUAL Windows OR CMAKE_C_COMPILER MATCHES "mingw32")/' "${OUT}/programs/zgate-edge-tunnel/CMakeLists.txt"
+    sed -i 's/if(CMAKE_SYSTEM_NAME STREQUAL Linux)/if(CMAKE_SYSTEM_NAME STREQUAL Linux AND NOT CMAKE_C_COMPILER MATCHES "mingw32")/' "${OUT}/programs/zgate-edge-tunnel/CMakeLists.txt"
+    sed -i 's/if (LINUX)/if (LINUX AND (NOT CMAKE_C_COMPILER MATCHES "mingw32"))/' "${OUT}/programs/zgate-edge-tunnel/CMakeLists.txt"
+    sed -i 's/if (WIN32)/if (WIN32 OR CMAKE_C_COMPILER MATCHES "mingw32")/' "${OUT}/programs/zgate-edge-tunnel/CMakeLists.txt"
+fi
 # ---- programs/zgate-edge-tunnel/CMakeLists.txt: target and source file names ----
 if [[ -f "${OUT}/programs/zgate-edge-tunnel/CMakeLists.txt" ]]; then
     sed -i 's/ziti-edge-tunnel/zgate-edge-tunnel/g' "${OUT}/programs/zgate-edge-tunnel/CMakeLists.txt"

@@ -5,6 +5,7 @@ build*/
 .cross-toolchains/
 *.log
 .env
+config.env
 .build-env.vcpkg
 .build-env.cross
 .cross-toolchains.env

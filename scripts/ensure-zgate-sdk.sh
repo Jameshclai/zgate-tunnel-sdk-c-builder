@@ -39,21 +39,35 @@ if [[ -n "${ZGATE_SDK_DIR:-}" ]] && [[ -d "${ZGATE_SDK_DIR}" ]]; then
     [[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0 || exit 0
 fi
 
-# 優先使用同版本 zgate-sdk-c-{ver}
+# 優先使用同版本 zgate-sdk-c-{ver}，否則使用 output 下最新版本
 if [[ -d "${SDK_DIR}" ]]; then
     export ZGATE_SDK_DIR="${SDK_DIR}"
     echo "==> Found zgate-sdk-c-${VER} at ${SDK_DIR} (from zgate-sdk-c-builder)"
-    [[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0 || exit 0
+else
+    LATEST=$(ls -d "${SDK_BUILDER_OUTPUT}"/zgate-sdk-c-* 2>/dev/null | tail -1)
+    if [[ -n "${LATEST}" ]] && [[ -d "${LATEST}" ]]; then
+        export ZGATE_SDK_DIR="${LATEST}"
+        echo "==> Using ${ZGATE_SDK_DIR} (from zgate-sdk-c-builder, tunnel ${VER} may work with this SDK)"
+    else
+        echo "Error: No zgate-sdk-c found under ${SDK_BUILDER_OUTPUT}" >&2
+        echo "Please run /home/user/zgate-sdk-c-builder/build.sh first, or set ZGATE_SDK_DIR / ZGATE_SDK_BUILDER_OUTPUT." >&2
+        exit 1
+    fi
 fi
 
-# 否則使用 zgate-sdk-c-builder/output 下已有的最新版本
-LATEST=$(ls -d "${SDK_BUILDER_OUTPUT}"/zgate-sdk-c-* 2>/dev/null | tail -1)
-if [[ -n "${LATEST}" ]] && [[ -d "${LATEST}" ]]; then
-    export ZGATE_SDK_DIR="${LATEST}"
-    echo "==> Using ${ZGATE_SDK_DIR} (from zgate-sdk-c-builder, tunnel ${VER} may work with this SDK)"
-    [[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0 || exit 0
+# 若 SDK 來自同層 zgate-sdk-c-builder，先執行其 apply-patch 以套用 tlsuv C89 與 zgate_log.h 等 patch（一鍵建置）
+if [[ -n "${ZGATE_SDK_DIR:-}" ]] && [[ "${ZGATE_SDK_DIR}" = "${SDK_BUILDER_OUTPUT}"* ]]; then
+    SDK_BASE="$(dirname "${SDK_BUILDER_OUTPUT}")"
+    SDK_VER="$(basename "${ZGATE_SDK_DIR}" | sed 's/^zgate-sdk-c-//')"
+    ZITI_SRC_CANDIDATE="${SDK_BASE}/work/ziti-sdk-c-${SDK_VER}"
+    TLSUV_SRC_CANDIDATE=""
+    for d in "${SDK_BASE}"/work/tlsuv-*; do
+        [[ -d "$d" ]] && TLSUV_SRC_CANDIDATE="$d" && break
+    done
+    if [[ -d "${ZITI_SRC_CANDIDATE}" ]] && [[ -n "${TLSUV_SRC_CANDIDATE}" ]] && [[ -d "${TLSUV_SRC_CANDIDATE}" ]]; then
+        echo "==> Refreshing SDK output (apply tlsuv/log patches): ${SDK_BASE}/scripts/apply-patch.sh"
+        (export ZITI_SRC="${ZITI_SRC_CANDIDATE}" TLSUV_SRC="${TLSUV_SRC_CANDIDATE}" ZITI_SDK_VERSION="${SDK_VER}" OUTPUT_DIR="${SDK_BUILDER_OUTPUT}" && "${SDK_BASE}/scripts/apply-patch.sh") || true
+    fi
 fi
 
-echo "Error: No zgate-sdk-c found under ${SDK_BUILDER_OUTPUT}" >&2
-echo "Please run /home/user/zgate-sdk-c-builder/build.sh first, or set ZGATE_SDK_DIR / ZGATE_SDK_BUILDER_OUTPUT." >&2
-exit 1
+[[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0 || exit 0
