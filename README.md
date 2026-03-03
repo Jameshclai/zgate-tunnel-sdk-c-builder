@@ -25,7 +25,6 @@
 ### 建置與版本規範
 
 - **產出**：建置須成功產出至少 **Linux x64**（`ci-linux-x64`）與 **Windows x64 MinGW**（`ci-windows-x64-mingw`）二進位。
-- **版本輸出**：`zgate-edge-tunnel version` 必須顯示單一版本字串 **vX.Y.Z**（與 ziti-tunnel-sdk-c 版本一致），**不得出現重複**（例如 `v1.10.10.v1.10.10`）。版本由 `build-all-platforms.sh` 傳入 `-DGIT_VERSION=v${TUNNEL_SDK_VERSION}` 並經 `apply-patch.sh` 之 CMake 邏輯（`SAVED_SIMPLE_GIT_VERSION`）還原為單一值。
 
 ### 設定
 
