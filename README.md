@@ -26,6 +26,16 @@
 
 - **產出**：建置須成功產出至少 **Linux x64**（`ci-linux-x64`）與 **Windows x64 MinGW**（`ci-windows-x64-mingw`）二進位。
 
+### 複製至 latest_version
+
+建置完成後，`build.sh` 會自動將**成功編譯的二進位**複製到專案根目錄下的 **`latest_version/<版本號>/`**，目錄結構與 [auto_zgate_edge_tunnel_build_bot](https://github.com/Jameshclai/auto_zgate_edge_tunnel_build_bot) 一致，依平台分層：
+
+- `latest_version/<版號>/linux/x64/`、`linux/arm64/`、`linux/arm/` — `zgate-edge-tunnel`
+- `latest_version/<版號>/windows/` — `zgate-edge-tunnel.exe`、`wintun.dll`
+- `latest_version/<版號>/macos/x64/`、`macos/arm64/` — `zgate-edge-tunnel`
+
+僅**有成功產出的平台**會寫入對應子目錄；`latest_version/` 已列入 `.gitignore`，不會被提交至版控。
+
 ### 設定
 
 可複製 `config.env.example` 為 `config.env` 並調整：
