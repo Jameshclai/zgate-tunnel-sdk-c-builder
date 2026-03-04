@@ -5,11 +5,14 @@ set -euo pipefail
 BUILDER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${BUILDER_ROOT}"
 
+# 保留呼叫端傳入的 SUDO_PASS（例如 Telegram Bot 詢問的密碼），避免 config.env 覆寫
+_SUDO_PASS_ENV="${SUDO_PASS:-}"
 if [[ -f "${BUILDER_ROOT}/config.env" ]]; then
     set -a
     source "${BUILDER_ROOT}/config.env"
     set +a
 fi
+[[ -n "${_SUDO_PASS_ENV}" ]] && export SUDO_PASS="${_SUDO_PASS_ENV}"
 export OUTPUT_DIR="${OUTPUT_DIR:-${BUILDER_ROOT}/output}"
 
 echo ""

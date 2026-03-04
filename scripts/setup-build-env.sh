@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Ensure build environment and required packages are installed (for fresh Ubuntu).
 # Copyright (c) eCloudseal Inc.  All rights reserved.  Author: Lai Hou Chang (James Lai)
+# 缺少套件時自動安裝（不詢問）；若設定 SUDO_PASS 則以 sudo -S 非互動執行，未設定時仍會詢問 sudo 密碼。
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILDER_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -13,6 +14,15 @@ fi
 
 [[ "${SKIP_ENV_CHECK:-0}" = "1" ]] && { echo "==> Skipping build env check (SKIP_ENV_CHECK=1)"; exit 0; }
 
+# 非互動模式：若有 SUDO_PASS 則用 sudo -S 執行後續 sudo 指令（一鍵建置不詢問）
+sudo_cmd() {
+    if [[ -n "${SUDO_PASS:-}" ]]; then
+        echo "${SUDO_PASS}" | sudo -S -p "" "$@"
+    else
+        sudo "$@"
+    fi
+}
+
 echo "==> Step 1a: Checking build environment (basic tools + cross-compilation)..."
 REQUIRED=(git curl cmake ninja gcc g++ pkg-config zip unzip tar)
 MISSING=()
@@ -20,14 +30,13 @@ for cmd in "${REQUIRED[@]}"; do
     command -v "$cmd" &>/dev/null || MISSING+=("$cmd")
 done
 
-# 若有需 sudo 的套件，在建置編譯環境階段先取得 sudo，一次安裝所有套件，之後才進入 patch/編譯
+# 若有需 sudo 的套件或交叉工具鏈，先取得 sudo（不詢問：有 SUDO_PASS 則非互動，否則 sudo 會問一次）
 SUDO_OK=0
 NEED_SUDO=
 [[ ${#MISSING[@]} -gt 0 ]] && NEED_SUDO=1
 [[ "${SKIP_CROSS_TOOLCHAINS:-0}" != "1" ]] && NEED_SUDO=1
 if [[ -n "${NEED_SUDO}" ]]; then
     if [[ -n "${SUDO_PASS:-}" ]]; then
-        # 非互動模式（CI/遠端）：以環境變數傳入 sudo 密碼，勿提交至版控
         if echo "${SUDO_PASS}" | sudo -S -v 2>/dev/null; then
             SUDO_OK=1
             echo "    sudo 已就緒（非互動模式）。"
@@ -36,69 +45,65 @@ if [[ -n "${NEED_SUDO}" ]]; then
             exit 1
         fi
     else
-        echo "    即將安裝建置與交叉編譯所需套件，可能需要 sudo 權限。"
-        read -r -p "    是否繼續並輸入 sudo 密碼（若需要）? [Y/n] " ans
-        if [[ "${ans,,}" != "n" && "${ans,,}" != "no" ]]; then
-            if sudo -v 2>/dev/null; then
-                SUDO_OK=1
-                echo "    sudo 已就緒，接著安裝所需套件。"
-            else
-                echo "Error: sudo 權限取得失敗，無法安裝套件。" >&2
-                exit 1
-            fi
+        echo "    取得 sudo 權限中（若未設定 SUDO_PASS，請輸入密碼）..."
+        if sudo -v 2>/dev/null; then
+            SUDO_OK=1
+            echo "    sudo 已就緒，接著安裝所需套件。"
         else
-            echo "    已略過 sudo；將略過需 sudo 的交叉編譯工具鏈安裝。" >&2
-            export SKIP_CROSS_TOOLCHAINS=1
+            echo "Error: sudo 權限取得失敗。請設定 SUDO_PASS 於 config.env 或手動安裝套件後再執行。" >&2
+            exit 1
         fi
     fi
 fi
 
 if [[ ${#MISSING[@]} -gt 0 ]]; then
-    if [[ "${SUDO_OK}" = "1" ]]; then
-        echo "    Missing required: ${MISSING[*]}"
-        echo "    正在安裝基本建置套件..."
-        sudo apt-get update -qq
-        sudo apt-get install -y build-essential cmake ninja-build git curl pkg-config zip unzip tar
-        echo "    基本套件已安裝。"
-    else
-        echo "    Missing required: ${MISSING[*]}"
-        echo "Please install the missing packages and re-run, or answer Y to use sudo." >&2
-        exit 1
+    echo "    Missing required: ${MISSING[*]} — 自動安裝中（不詢問）..."
+    echo "    正在安裝基本建置套件..."
+    sudo_cmd apt-get update -qq
+    sudo_cmd apt-get install -y build-essential cmake ninja-build git curl pkg-config zip unzip tar
+    if ! command -v jq &>/dev/null; then
+        sudo_cmd apt-get install -y jq
     fi
+    echo "    基本套件已安裝。"
 fi
 
-# Check vcpkg (required for build); auto clone and bootstrap if missing
+# 再次檢查必備指令
+MISSING=()
+for cmd in "${REQUIRED[@]}"; do
+    command -v "$cmd" &>/dev/null || MISSING+=("$cmd")
+done
+if [[ ${#MISSING[@]} -gt 0 ]]; then
+    echo "Error: Still missing: ${MISSING[*]}. Install them and re-run." >&2
+    exit 1
+fi
+
+# Check vcpkg (required for build); 缺少則自動 clone 並 bootstrap（不詢問）
 VCPKG_ROOT="${VCPKG_ROOT:-}"
 if [[ -z "${VCPKG_ROOT}" ]]; then
     VCPKG_ROOT="${HOME}/vcpkg"
 fi
 if [[ ! -d "${VCPKG_ROOT}" ]] || [[ ! -x "${VCPKG_ROOT}/vcpkg" ]]; then
-    echo "    vcpkg not found at ${VCPKG_ROOT}"
-    echo ""
-    echo "vcpkg is required for dependency management. Options:"
-    echo "  1) Clone and bootstrap vcpkg to ${VCPKG_ROOT} (no sudo)"
-    echo "  2) Set VCPKG_ROOT in config.env to your existing vcpkg path"
-    echo "  3) Exit and install vcpkg manually"
-    echo ""
-    read -r -p "Clone and bootstrap vcpkg to ${VCPKG_ROOT} now? [y/N] " ans
-    if [[ "${ans,,}" = "y" || "${ans,,}" = "yes" ]]; then
-        mkdir -p "$(dirname "${VCPKG_ROOT}")"
-        if [[ -d "${VCPKG_ROOT}/.git" ]]; then
-            echo "    vcpkg directory exists; bootstrapping..."
-            (cd "${VCPKG_ROOT}" && ./bootstrap-vcpkg.sh -disableMetrics)
-        else
-            echo "    Cloning vcpkg..."
-            git clone --depth 1 https://github.com/microsoft/vcpkg.git "${VCPKG_ROOT}"
-            (cd "${VCPKG_ROOT}" && ./bootstrap-vcpkg.sh -disableMetrics)
-        fi
-        echo "    vcpkg ready at ${VCPKG_ROOT}"
-        echo "    Consider adding to config.env: export VCPKG_ROOT=${VCPKG_ROOT}"
+    echo "    vcpkg not found at ${VCPKG_ROOT} — 自動 clone 並 bootstrap（不詢問）..."
+    mkdir -p "$(dirname "${VCPKG_ROOT}")"
+    if [[ -d "${VCPKG_ROOT}/.git" ]]; then
+        echo "    vcpkg directory exists; bootstrapping..."
+        (cd "${VCPKG_ROOT}" && ./bootstrap-vcpkg.sh -disableMetrics)
     else
-        echo "Error: vcpkg is required. Set VCPKG_ROOT in config.env or install vcpkg, then re-run." >&2
-        exit 1
+        echo "    Cloning vcpkg..."
+        git clone --depth 1 https://github.com/microsoft/vcpkg.git "${VCPKG_ROOT}"
+        (cd "${VCPKG_ROOT}" && ./bootstrap-vcpkg.sh -disableMetrics)
     fi
+    if (cd "${VCPKG_ROOT}" && git rev-parse --is-shallow-repository 2>/dev/null) | grep -q true; then
+        echo "    Fetching vcpkg full history (for baseline)..."
+        (cd "${VCPKG_ROOT}" && git fetch --unshallow)
+    fi
+    echo "    vcpkg ready at ${VCPKG_ROOT}"
 else
     echo "    vcpkg: OK (${VCPKG_ROOT})"
+    if (cd "${VCPKG_ROOT}" && git rev-parse --is-shallow-repository 2>/dev/null) | grep -q true; then
+        echo "    Fetching vcpkg full history (for baseline)..."
+        (cd "${VCPKG_ROOT}" && git fetch --unshallow)
+    fi
 fi
 
 # Write VCPKG_ROOT so parent build.sh can source it (needed when we just cloned vcpkg)

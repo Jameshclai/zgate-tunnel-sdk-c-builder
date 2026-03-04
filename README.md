@@ -18,7 +18,7 @@
 ./build.sh
 ```
 
-會依序：**建置編譯環境**（若需安裝套件會先詢問 sudo，一次安裝基本工具與交叉編譯工具鏈）→ 取得最新 ziti-tunnel-sdk-c → 使用 zgate-sdk-c-builder 產出的 zgate-sdk-c → patch → 多平台編譯 → 清理。
+會依序：**建置編譯環境**（確認 git、cmake、ninja、gcc、vcpkg 等已安裝；若缺少會自動安裝，不詢問）→ 取得最新 ziti-tunnel-sdk-c → 使用 zgate-sdk-c-builder 產出的 zgate-sdk-c → patch → 多平台編譯 → 清理。
 
 **一鍵建置不互動**：在 `config.env` 中設定 `SUDO_PASS` 後執行 `./build.sh`，腳本將以 `sudo -S` 自動輸入密碼，不會重複詢問。**切記：密碼切勿記錄於任何檔案、文件或版控中**；`config.env` 已列於 `.gitignore`，請勿提交。
 
