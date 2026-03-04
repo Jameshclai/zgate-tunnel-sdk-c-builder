@@ -12,6 +12,7 @@ config.env
 
 # Output: generated zgate-tunnel-sdk-c versions
 zgate-tunnel-sdk-c-*/
+latest_version/
 
 # IDE / OS
 .idea/

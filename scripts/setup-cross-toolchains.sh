@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILDER_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CROSS_DIR="${CROSS_TOOLCHAINS_DIR:-${BUILDER_ROOT}/.cross-toolchains}"
 OSXCROSS_ROOT="${CROSS_DIR}/osxcross"
-MACOS_SDK_VERSION="${MACOS_SDK_VERSION:-14.0}"
+MACOS_SDK_VERSION="${MACOS_SDK_VERSION:-11.3}"
 
 if [[ -f "${BUILDER_ROOT}/config.env" ]]; then
     set -a
@@ -36,6 +36,23 @@ sudo_cmd() {
         sudo "$@"
     fi
 }
+
+# ---- Linux ARM：當 TUNNEL_PRESETS 含 ci-linux-arm64 / ci-linux-arm 時，確保交叉編譯器已安裝 ----
+[[ "${PRESETS}" = *ci-linux-arm64* ]] && NEED_LINUX_ARM64=1 || NEED_LINUX_ARM64=0
+[[ "${PRESETS}" = *ci-linux-arm* ]] && NEED_LINUX_ARM=1 || NEED_LINUX_ARM=0
+[[ -z "${PRESETS}" ]] && NEED_LINUX_ARM64=1 && NEED_LINUX_ARM=1
+if [[ "${NEED_LINUX_ARM64}" = "1" ]] && ! command -v aarch64-linux-gnu-gcc &>/dev/null; then
+    echo "    Installing cross-compiler for Linux arm64 (aarch64-linux-gnu-gcc)..."
+    sudo_cmd apt-get update -qq
+    sudo_cmd apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+    echo "    Linux arm64 cross-compiler installed."
+fi
+if [[ "${NEED_LINUX_ARM}" = "1" ]] && ! command -v arm-linux-gnueabihf-gcc &>/dev/null; then
+    echo "    Installing cross-compiler for Linux arm (arm-linux-gnueabihf-gcc)..."
+    sudo_cmd apt-get update -qq
+    sudo_cmd apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+    echo "    Linux arm cross-compiler installed."
+fi
 
 # ---- Windows x86_64: MinGW（由 setup-build-env 階段已取得 sudo，此處直接安裝）----
 if ! command -v x86_64-w64-mingw32-gcc &>/dev/null && ! command -v x86_64-w64-mingw32-g++ &>/dev/null; then
@@ -81,6 +98,10 @@ else
 fi
 
 # ---- Darwin (macOS): osxcross（僅當 TUNNEL_PRESETS 含 ci-macOS-* 時執行）----
+# 驗證是否為有效 XZ 壓縮檔（避免 404 被存成 "Not Found"）
+is_valid_sdk() {
+    [[ -f "${1}" ]] && [[ -s "${1}" ]] && xz -t "${1}" 2>/dev/null
+}
 if [[ "${NEED_MACOS}" = "0" ]]; then
     echo "    Skipping osxcross (no macOS preset in TUNNEL_PRESETS)."
 elif [[ "$(uname -s)" != "Darwin" ]]; then
@@ -93,32 +114,50 @@ elif [[ "$(uname -s)" != "Darwin" ]]; then
             fi
             git clone --depth 1 https://github.com/tpoechtrager/osxcross.git "${OSXCROSS_ROOT}"
         fi
-        SDK_TARBALL="${CROSS_DIR}/MacOSX${MACOS_SDK_VERSION}.sdk.tar.xz"
-        if [[ ! -f "${SDK_TARBALL}" ]]; then
-            echo "    Downloading MacOSX SDK..."
-            for ver in 12.3 11.3; do
-                if curl -sSL -o "${CROSS_DIR}/MacOSX${ver}.sdk.tar.xz" "https://github.com/phracker/MacOSX-SDKs/releases/download/${ver}/MacOSX${ver}.sdk.tar.xz" 2>/dev/null && [[ -f "${CROSS_DIR}/MacOSX${ver}.sdk.tar.xz" ]]; then
-                    SDK_TARBALL="${CROSS_DIR}/MacOSX${ver}.sdk.tar.xz"
+        SDK_TARBALL=""
+        # 優先使用已存在且有效的快取
+        for v in ${MACOS_SDK_VERSION} 11.3 11.1 11.0 10.15; do
+            candidate="${CROSS_DIR}/MacOSX${v}.sdk.tar.xz"
+            if is_valid_sdk "${candidate}"; then
+                SDK_TARBALL="${candidate}"
+                MACOS_SDK_VERSION="${v}"
+                echo "    Using cached MacOSX SDK: MacOSX${v}.sdk.tar.xz"
+                break
+            fi
+            [[ -f "${candidate}" ]] && rm -f "${candidate}"
+        done
+        if [[ -z "${SDK_TARBALL}" ]]; then
+            echo "    Downloading MacOSX SDK from phracker/MacOSX-SDKs..."
+            for ver in 11.3 11.1 11.0 10.15; do
+                url="https://github.com/phracker/MacOSX-SDKs/releases/download/${ver}/MacOSX${ver}.sdk.tar.xz"
+                dest="${CROSS_DIR}/MacOSX${ver}.sdk.tar.xz"
+                if curl -sSLf -o "${dest}" "${url}" 2>/dev/null && is_valid_sdk "${dest}"; then
+                    SDK_TARBALL="${dest}"
                     MACOS_SDK_VERSION="${ver}"
+                    echo "    Downloaded MacOSX${ver}.sdk.tar.xz"
                     break
                 fi
+                rm -f "${dest}"
             done
         fi
-        if [[ ! -f "${SDK_TARBALL}" ]]; then
-            echo "    Error: Could not download MacOSX SDK. Place SDK tarball in ${CROSS_DIR} (e.g. MacOSX12.3.sdk.tar.xz) and re-run." >&2
+        if [[ -z "${SDK_TARBALL}" ]] || [[ ! -f "${SDK_TARBALL}" ]]; then
+            echo "    Error: Could not download valid MacOSX SDK. Place a valid SDK tarball in ${CROSS_DIR} (e.g. MacOSX11.3.sdk.tar.xz from phracker/MacOSX-SDKs) and re-run." >&2
             exit 1
         fi
-        cp -f "${SDK_TARBALL}" "${OSXCROSS_ROOT}/tarballs/" 2>/dev/null || true
+        mkdir -p "${OSXCROSS_ROOT}/tarballs"
+        cp -f "${SDK_TARBALL}" "${OSXCROSS_ROOT}/tarballs/"
         (cd "${OSXCROSS_ROOT}" && UNATTENDED=1 OSX_VERSION_MIN=10.13 ./build.sh 2>&1) || {
-            echo "    Error: osxcross build failed. Cannot build Darwin targets." >&2
-            exit 1
+            echo "    Error: osxcross build failed. Skipping macOS presets; other platforms will still build." >&2
+            echo 'export SKIP_MACOS=1' >> "${BUILDER_ROOT}/.cross-toolchains.env"
+            exit 0
         }
         if [[ -d "${OSXCROSS_ROOT}/target/bin" ]]; then
             echo "    osxcross ready at ${OSXCROSS_ROOT}"
             export PATH="${OSXCROSS_ROOT}/target/bin:${PATH}"
         else
             echo "    Error: osxcross target/bin not found after build." >&2
-            exit 1
+            echo 'export SKIP_MACOS=1' >> "${BUILDER_ROOT}/.cross-toolchains.env"
+            exit 0
         fi
     else
         echo "    osxcross already present at ${OSXCROSS_ROOT}"

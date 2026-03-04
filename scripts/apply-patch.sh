@@ -54,6 +54,10 @@ find "${OUT}" -type f \( \
 # Restore subcommands.c GIT_REPOSITORY (must stay openziti)
 sed -i 's|openzgate/subcommands\.c|openziti/subcommands.c|g' "${OUT}/programs/CMakeLists.txt" 2>/dev/null || true
 
+# ---- Root CMakeLists.txt: Windows 路徑使用反斜線（含 MinGW 交叉編譯） ----
+# 編譯 Windows 二進位時（含 Linux 主機 MinGW 交叉編譯）一律使用 PATH_SEP='\\'，確保 logs/service 等路徑在 Windows 環境正確
+sed -i 's/^if (WIN32)$/if (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_C_COMPILER MATCHES "mingw32")/' "${OUT}/CMakeLists.txt"
+
 # ---- Root CMakeLists.txt: ZITI_SDK_* -> ZGATE_SDK_*, project name, version fallback ----
 sed -i 's/set(ZITI_SDK_DIR/set(ZGATE_SDK_DIR/g' "${OUT}/CMakeLists.txt"
 sed -i 's/set(ZITI_SDK_VERSION/set(ZGATE_SDK_VERSION/g' "${OUT}/CMakeLists.txt"
@@ -220,12 +224,29 @@ set(CMAKE_SYSTEM_PROCESSOR arm64)
 set(ZGATE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 if(DEFINED ENV{OSXCROSS_ROOT})
   set(OSXCROSS_BIN "$ENV{OSXCROSS_ROOT}/target/bin")
+  set(OSXCROSS_SDK "$ENV{OSXCROSS_ROOT}/target/SDK")
+  if(EXISTS "${OSXCROSS_SDK}/MacOSX11.3.sdk")
+    set(CMAKE_OSX_SYSROOT "${OSXCROSS_SDK}/MacOSX11.3.sdk")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -F${OSXCROSS_SDK}/MacOSX11.3.sdk/System/Library/Frameworks")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -F${OSXCROSS_SDK}/MacOSX11.3.sdk/System/Library/Frameworks")
+  elseif(EXISTS "${OSXCROSS_SDK}/MacOSX12.3.sdk")
+    set(CMAKE_OSX_SYSROOT "${OSXCROSS_SDK}/MacOSX12.3.sdk")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -F${OSXCROSS_SDK}/MacOSX12.3.sdk/System/Library/Frameworks")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -F${OSXCROSS_SDK}/MacOSX12.3.sdk/System/Library/Frameworks")
+  endif()
   if(EXISTS "${OSXCROSS_BIN}/arm64-apple-darwin20.4-clang")
     set(CMAKE_C_COMPILER "${OSXCROSS_BIN}/arm64-apple-darwin20.4-clang")
     set(CMAKE_CXX_COMPILER "${OSXCROSS_BIN}/arm64-apple-darwin20.4-clang++")
   elseif(EXISTS "${OSXCROSS_BIN}/o64-clang")
     set(CMAKE_C_COMPILER "${OSXCROSS_BIN}/o64-clang")
     set(CMAKE_CXX_COMPILER "${OSXCROSS_BIN}/o64-clang++")
+  endif()
+  if(EXISTS "${OSXCROSS_BIN}/arm64-apple-darwin20.4-install_name_tool")
+    set(CMAKE_INSTALL_NAME_TOOL "${OSXCROSS_BIN}/arm64-apple-darwin20.4-install_name_tool" CACHE FILEPATH "install_name_tool for Mach-O")
+  endif()
+  if(EXISTS "${OSXCROSS_BIN}/arm64-apple-darwin20.4-ar")
+    set(CMAKE_AR "${OSXCROSS_BIN}/arm64-apple-darwin20.4-ar" CACHE FILEPATH "ar for static libs")
+    set(CMAKE_RANLIB "${OSXCROSS_BIN}/arm64-apple-darwin20.4-ranlib" CACHE FILEPATH "ranlib for static libs")
   endif()
 endif()
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
@@ -240,12 +261,29 @@ set(CMAKE_SYSTEM_PROCESSOR x86_64)
 set(ZGATE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 if(DEFINED ENV{OSXCROSS_ROOT})
   set(OSXCROSS_BIN "$ENV{OSXCROSS_ROOT}/target/bin")
+  set(OSXCROSS_SDK "$ENV{OSXCROSS_ROOT}/target/SDK")
+  if(EXISTS "${OSXCROSS_SDK}/MacOSX11.3.sdk")
+    set(CMAKE_OSX_SYSROOT "${OSXCROSS_SDK}/MacOSX11.3.sdk")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -F${OSXCROSS_SDK}/MacOSX11.3.sdk/System/Library/Frameworks")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -F${OSXCROSS_SDK}/MacOSX11.3.sdk/System/Library/Frameworks")
+  elseif(EXISTS "${OSXCROSS_SDK}/MacOSX12.3.sdk")
+    set(CMAKE_OSX_SYSROOT "${OSXCROSS_SDK}/MacOSX12.3.sdk")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -F${OSXCROSS_SDK}/MacOSX12.3.sdk/System/Library/Frameworks")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -F${OSXCROSS_SDK}/MacOSX12.3.sdk/System/Library/Frameworks")
+  endif()
   if(EXISTS "${OSXCROSS_BIN}/x86_64-apple-darwin20.4-clang")
     set(CMAKE_C_COMPILER "${OSXCROSS_BIN}/x86_64-apple-darwin20.4-clang")
     set(CMAKE_CXX_COMPILER "${OSXCROSS_BIN}/x86_64-apple-darwin20.4-clang++")
   elseif(EXISTS "${OSXCROSS_BIN}/o64-clang")
     set(CMAKE_C_COMPILER "${OSXCROSS_BIN}/o64-clang")
     set(CMAKE_CXX_COMPILER "${OSXCROSS_BIN}/o64-clang++")
+  endif()
+  if(EXISTS "${OSXCROSS_BIN}/x86_64-apple-darwin20.4-install_name_tool")
+    set(CMAKE_INSTALL_NAME_TOOL "${OSXCROSS_BIN}/x86_64-apple-darwin20.4-install_name_tool" CACHE FILEPATH "install_name_tool for Mach-O")
+  endif()
+  if(EXISTS "${OSXCROSS_BIN}/x86_64-apple-darwin20.4-ar")
+    set(CMAKE_AR "${OSXCROSS_BIN}/x86_64-apple-darwin20.4-ar" CACHE FILEPATH "ar for static libs")
+    set(CMAKE_RANLIB "${OSXCROSS_BIN}/x86_64-apple-darwin20.4-ranlib" CACHE FILEPATH "ranlib for static libs")
   endif()
 endif()
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
@@ -281,6 +319,17 @@ for p in presets:
         p[\"binaryDir\"] = \"\${sourceDir}/build-\" + name
     elif \"ci-build\" in inherits:
         p[\"binaryDir\"] = \"\${sourceDir}/build-\" + name
+    # Linux host: macOS presets 使用 osxcross toolchain，讓 vcpkg detect_compiler 等子流程也能用到
+    if name == \"ci-macOS-x64\":
+        cv = p.get(\"cacheVariables\", {})
+        cv[\"VCPKG_TARGET_TRIPLET\"] = \"x64-osx\"
+        cv[\"VCPKG_CHAINLOAD_TOOLCHAIN_FILE\"] = \"\${sourceDir}/toolchains/macOS-x64-osxcross.cmake\"
+        p[\"cacheVariables\"] = cv
+    elif name == \"ci-macOS-arm64\":
+        cv = p.get(\"cacheVariables\", {})
+        cv[\"VCPKG_TARGET_TRIPLET\"] = \"arm64-osx\"
+        cv[\"VCPKG_CHAINLOAD_TOOLCHAIN_FILE\"] = \"\${sourceDir}/toolchains/macOS-arm64-osxcross.cmake\"
+        p[\"cacheVariables\"] = cv
 # Add Windows arm64 MinGW preset (for Linux host cross-compile)
 if not any(p.get(\"name\") == \"vcpkg-arm64-mingw-static\" for p in presets):
     presets.append({

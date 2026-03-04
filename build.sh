@@ -15,6 +15,46 @@ fi
 [[ -n "${_SUDO_PASS_ENV}" ]] && export SUDO_PASS="${_SUDO_PASS_ENV}"
 export OUTPUT_DIR="${OUTPUT_DIR:-${BUILDER_ROOT}/output}"
 
+# 直接編譯參數：-all、-linux、-windows、-macos、-h/--help（會覆寫 TUNNEL_PRESETS）
+case "${1:-}" in
+    -h|--help)
+        echo "用法: $0 [-all | -linux | -windows | -macos | -h | --help]"
+        echo ""
+        echo "  無參數    使用 config.env 的 TUNNEL_PRESETS，未設定則為全部平台。"
+        echo "  -all      編譯全部平台：Linux x64/arm64/arm、macOS x64/arm64、Windows x64。"
+        echo "  -linux    編譯所有 Linux 平台：ci-linux-x64、ci-linux-arm64、ci-linux-arm。"
+        echo "  -windows  僅編譯 Windows：ci-windows-x64-mingw。"
+        echo "  -macos    僅編譯 macOS：ci-macOS-x64、ci-macOS-arm64（需 osxcross）。"
+        echo "  -h, --help  顯示此說明。"
+        echo ""
+        echo "亦可使用環境變數 TUNNEL_PRESETS（例：export TUNNEL_PRESETS=\"ci-linux-x64;ci-windows-x64-mingw\"）。"
+        exit 0
+        ;;
+    -all)
+        export TUNNEL_PRESETS="ci-linux-x64;ci-linux-arm64;ci-linux-arm;ci-macOS-x64;ci-macOS-arm64;ci-windows-x64-mingw"
+        echo "==> 建置範圍：全部平台 (-all)"
+        ;;
+    -linux)
+        export TUNNEL_PRESETS="ci-linux-x64;ci-linux-arm64;ci-linux-arm"
+        echo "==> 建置範圍：所有 Linux 平台 (-linux)：x64、arm64、arm"
+        ;;
+    -windows)
+        export TUNNEL_PRESETS="ci-windows-x64-mingw"
+        echo "==> 建置範圍：僅 Windows (-windows)"
+        ;;
+    -macos)
+        export TUNNEL_PRESETS="ci-macOS-x64;ci-macOS-arm64"
+        echo "==> 建置範圍：僅 macOS (-macos)"
+        ;;
+    "")
+        # 無參數：保留 config.env 的 TUNNEL_PRESETS 或由 build-all-platforms 使用預設
+        ;;
+    *)
+        echo "未知選項: $1（使用 -h 或 --help 查看用法）" >&2
+        exit 1
+        ;;
+esac
+
 echo ""
 echo "=============================================="
 echo "  zgate-tunnel-sdk-c 建置流程"
@@ -68,8 +108,15 @@ echo "  目前狀態：正在清理…"
 echo "  步驟 6 完成：清理完成。"
 echo ""
 
-# 列出成功編譯產出的可執行檔位置
+# 複製編譯成功的檔案至 latest_version/<版本>/，結構與 auto_zgate_edge_tunnel_build_bot 一致（依平台區分）
 OUT="${ZGATE_TUNNEL_OUT:-${OUTPUT_DIR}/zgate-tunnel-sdk-c-${ZITI_TUNNEL_SDK_VERSION}}"
+if [[ -d "${OUT}" ]]; then
+    echo "【複製至 latest_version】"
+    "${BUILDER_ROOT}/scripts/copy-to-latest-version.sh" "${OUT}"
+    echo ""
+fi
+
+# 列出成功編譯產出的可執行檔位置
 echo "=============================================="
 echo "  建置完成 － 成功產出的編譯檔案位置"
 echo "=============================================="

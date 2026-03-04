@@ -22,11 +22,21 @@ get_latest_tag() {
         return
     fi
     local url="https://api.github.com/repos/${repo}/releases/latest"
+    local tag=""
     if command -v jq &>/dev/null; then
-        curl -sSfL "${url}" | jq -r '.tag_name'
+        tag="$(curl -sSLf "${url}" 2>/dev/null | jq -r '.tag_name // empty')" || true
     else
-        curl -sSfL "${url}" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+        tag="$(curl -sSLf "${url}" 2>/dev/null | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)" || true
     fi
+    if [[ -z "${tag}" ]] && [[ -d "${WORK_DIR:-.}" ]]; then
+        local existing
+        existing="$(find "${WORK_DIR}" -maxdepth 1 -type d -name 'ziti-tunnel-sdk-c-*' 2>/dev/null | head -1)"
+        if [[ -n "${existing}" ]]; then
+            tag="v$(basename "${existing}" | sed 's/^ziti-tunnel-sdk-c-//')"
+            echo "    (GitHub API unavailable, using existing work dir: ${tag})" >&2
+        fi
+    fi
+    [[ -n "${tag}" ]] && echo "${tag}"
 }
 
 norm_ver() {
