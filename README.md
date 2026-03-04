@@ -22,6 +22,21 @@
 
 **一鍵建置不互動**：在 `config.env` 中設定 `SUDO_PASS` 後執行 `./build.sh`，腳本將以 `sudo -S` 自動輸入密碼，不會重複詢問。**切記：密碼切勿記錄於任何檔案、文件或版控中**；`config.env` 已列於 `.gitignore`，請勿提交。
 
+### build.sh 控制指令
+
+可傳入參數指定建置範圍（會覆寫 `config.env` 的 `TUNNEL_PRESETS`）：
+
+| 參數 | 說明 |
+|------|------|
+| 無參數 | 使用 `config.env` 的 `TUNNEL_PRESETS`；未設定則為全部平台。 |
+| `-all` | 編譯全部平台：Linux x64/arm64/arm、macOS x64/arm64、Windows x64。 |
+| `-linux` | 僅編譯所有 Linux 平台：ci-linux-x64、ci-linux-arm64、ci-linux-arm。 |
+| `-windows` | 僅編譯 Windows：ci-windows-x64-mingw。 |
+| `-macos` | 僅編譯 macOS：ci-macOS-x64、ci-macOS-arm64（需 osxcross）。 |
+| `-h`、`--help` | 顯示用法說明。 |
+
+亦可使用環境變數 `TUNNEL_PRESETS`（例：`export TUNNEL_PRESETS="ci-linux-x64;ci-windows-x64-mingw"`）。
+
 ### 建置與版本規範
 
 - **產出**：建置須成功產出至少 **Linux x64**（`ci-linux-x64`）與 **Windows x64 MinGW**（`ci-windows-x64-mingw`）二進位。
